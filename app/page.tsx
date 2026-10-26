@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Shield,
   Search,
   User,
   LogOut,
@@ -32,10 +31,11 @@ import {
   Settings,
   Key,
   CheckCircle,
-  Filter
+  CheckSquare,
+  Square
 } from 'lucide-react';
 
-// --- DATI DI DEFAULT (USATI SOLO AL PRIMO AVVIO ASSOLUTO) ---
+// --- DATI DI DEFAULT ---
 const DEFAULT_NEWS = [
   {
     id: 'news-1',
@@ -157,18 +157,15 @@ export default function FitaTaekwondoApp() {
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [selectedNewsCategory, setSelectedNewsCategory] = useState<string>('Tutti');
 
-  // 'home' o id sezione
+  // Navigazione
   const [activeSectionId, setActiveSectionId] = useState('home');
   const [activeTabMode, setActiveTabMode] = useState<'rules' | 'materials'>('rules');
 
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // STATO FISARMONICHE: Inizializzato vuoto (articoli tutti chiusi all'ingresso)
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({});
-  
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  // Utente Corrente & Autenticazione
+  // UTENTE DEFAULT: NULL (Disconnesso all'apertura per sicurezza)
   const [user, setUser] = useState<{
     id: string;
     firstName: string;
@@ -177,16 +174,9 @@ export default function FitaTaekwondoApp() {
     role: 'user' | 'admin';
     region: string;
     badgeId: string;
-  } | null>({
-    id: 'u1',
-    firstName: 'Paolo',
-    lastName: 'Romano',
-    email: 'admin@taekwondo.it',
-    role: 'admin',
-    region: 'Campania',
-    badgeId: 'FITA-ARB-001'
-  });
+  } | null>(null);
 
+  const [rememberMe, setRememberMe] = useState(false);
   const [usersList, setUsersList] = useState(DEFAULT_USERS);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
@@ -230,14 +220,14 @@ export default function FitaTaekwondoApp() {
   const [formMediaType, setFormMediaType] = useState<'image' | 'video'>('image');
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
-  // Form Nuova Notizia (Home)
+  // Form Nuova Notizia
   const [newsTitle, setNewsTitle] = useState('');
   const [newsCategory, setNewsCategory] = useState('Regionale');
   const [newsLocation, setNewsLocation] = useState('');
   const [newsContent, setNewsContent] = useState('');
   const [newsImage, setNewsImage] = useState('');
 
-  // Form Nuovo Documento / Materiale
+  // Form Nuovo Documento
   const [docTitle, setDocTitle] = useState('');
   const [docDescription, setDocDescription] = useState('');
   const [docFormat, setDocFormat] = useState('PDF');
@@ -260,13 +250,18 @@ export default function FitaTaekwondoApp() {
     if (savedFavs) {
       try { setFavorites(JSON.parse(savedFavs)); } catch (e) {}
     }
-    const savedUser = localStorage.getItem('tkd_current_user');
-    if (savedUser) {
-      try { setUser(JSON.parse(savedUser)); } catch (e) {}
-    }
     const savedUsersList = localStorage.getItem('tkd_users_list');
     if (savedUsersList) {
       try { setUsersList(JSON.parse(savedUsersList)); } catch (e) {}
+    }
+
+    // RIPRISTINO UTENTE SOLO SE "RICORDAMI" ERA ATTIVO
+    const isRemembered = localStorage.getItem('tkd_remember_me') === 'true';
+    if (isRemembered) {
+      const savedUser = localStorage.getItem('tkd_current_user');
+      if (savedUser) {
+        try { setUser(JSON.parse(savedUser)); } catch (e) {}
+      }
     }
   }, []);
 
@@ -281,14 +276,6 @@ export default function FitaTaekwondoApp() {
   useEffect(() => {
     localStorage.setItem('tkd_favorites', JSON.stringify(favorites));
   }, [favorites]);
-
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('tkd_current_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('tkd_current_user');
-    }
-  }, [user]);
 
   useEffect(() => {
     localStorage.setItem('tkd_users_list', JSON.stringify(usersList));
@@ -322,36 +309,55 @@ export default function FitaTaekwondoApp() {
     const updatedUser = { ...user, role: newRole as 'user' | 'admin' };
     setUser(updatedUser);
     setUsersList(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u));
+    
+    if (rememberMe) {
+      localStorage.setItem('tkd_current_user', JSON.stringify(updatedUser));
+    }
     showToast(`Ruolo attivo: ${newRole.toUpperCase()}`);
   };
 
-  // --- GESTIONE LOGIN & REGISTRAZIONE ---
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('tkd_remember_me');
+    localStorage.removeItem('tkd_current_user');
+    showToast('Logout effettuato');
+  };
+
+  // --- LOGIN CON GESTIONE "RICORDAMI" ---
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const existing = usersList.find(u => u.email.toLowerCase() === authEmail.trim().toLowerCase());
+    let loggedUser: any;
     
     if (existing) {
-      setUser(existing as any);
-      showToast(`Bentornato/a, ${existing.firstName} ${existing.lastName}!`);
+      loggedUser = existing;
     } else {
-      // Accesso simulato per test se l'email non esiste
-      const newUserObj = {
+      loggedUser = {
         id: 'u_' + Date.now(),
         firstName: authEmail.split('@')[0] || 'Arbitro',
         lastName: 'FITA',
         email: authEmail,
-        role: 'user' as const,
+        role: 'user',
         region: 'Campania',
         badgeId: 'FITA-ARB-' + Math.floor(100 + Math.random() * 900)
       };
-      setUser(newUserObj);
-      setUsersList([...usersList, newUserObj]);
-      showToast(`Accesso effettuato come ${newUserObj.firstName}`);
+      setUsersList([...usersList, loggedUser]);
+    }
+
+    setUser(loggedUser);
+
+    if (rememberMe) {
+      localStorage.setItem('tkd_remember_me', 'true');
+      localStorage.setItem('tkd_current_user', JSON.stringify(loggedUser));
+    } else {
+      localStorage.removeItem('tkd_remember_me');
+      localStorage.removeItem('tkd_current_user');
     }
 
     setAuthModalOpen(false);
     setAuthEmail('');
     setAuthPassword('');
+    showToast(`Bentornato/a ${loggedUser.firstName}!`);
   };
 
   const handleRegisterSubmit = (e: React.FormEvent) => {
@@ -373,10 +379,15 @@ export default function FitaTaekwondoApp() {
 
     setUser(newUserObj);
     setUsersList([newUserObj, ...usersList]);
-    setAuthModalOpen(false);
-    showToast(`Registrazione completata! Benvenuto/a ${authFirstName} ${authLastName}`);
 
-    // Reset Form
+    if (rememberMe) {
+      localStorage.setItem('tkd_remember_me', 'true');
+      localStorage.setItem('tkd_current_user', JSON.stringify(newUserObj));
+    }
+
+    setAuthModalOpen(false);
+    showToast(`Registrazione completata! Benvenuto/a ${authFirstName}`);
+
     setAuthFirstName('');
     setAuthLastName('');
     setAuthEmail('');
@@ -386,12 +397,11 @@ export default function FitaTaekwondoApp() {
   const handleForgotPassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail.trim()) return;
-    showToast(`📧 Link di ripristino inviato all'indirizzo ${authEmail}`);
+    showToast(`📧 Link di ripristino inviato a ${authEmail}`);
     setAuthModalOpen(false);
     setAuthEmail('');
   };
 
-  // --- APERTURA MODAL PROFILO ---
   const openProfileModal = () => {
     if (!user) return;
     setEditFirstName(user.firstName || '');
@@ -419,6 +429,11 @@ export default function FitaTaekwondoApp() {
 
     setUser(updatedUser);
     setUsersList(prev => prev.map(u => u.id === user.id ? { ...u, ...updatedUser } : u));
+    
+    if (localStorage.getItem('tkd_remember_me') === 'true') {
+      localStorage.setItem('tkd_current_user', JSON.stringify(updatedUser));
+    }
+
     showToast('Profilo aggiornato con successo!');
   };
 
@@ -429,7 +444,7 @@ export default function FitaTaekwondoApp() {
       return;
     }
     if (newPassword.length < 6) {
-      alert('La nuova password deve contenere almeno 6 caratteri.');
+      alert('La password deve contenere almeno 6 caratteri.');
       return;
     }
     showToast('🔒 Password modificata con successo!');
@@ -583,7 +598,6 @@ export default function FitaTaekwondoApp() {
 
   const currentSection = sections.find(s => s.id === activeSectionId);
 
-  // Filtro ricerca + Preferiti
   const filteredSubsections = currentSection ? currentSection.subsections.filter(sub => {
     const matchesSearch =
       sub.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -595,7 +609,6 @@ export default function FitaTaekwondoApp() {
     return matchesSearch && matchesFav;
   }) : [];
 
-  // Filtro News Home
   const filteredNews = newsList.filter(n => {
     if (selectedNewsCategory === 'Tutti') return true;
     return n.category === selectedNewsCategory;
@@ -611,30 +624,30 @@ export default function FitaTaekwondoApp() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-24 right-6 z-50 bg-[#0B1B3D] text-white px-5 py-3 rounded-lg shadow-xl text-xs font-semibold flex items-center gap-2 border-l-4 border-[#A60F2D]"
+            className="fixed top-20 right-4 sm:top-24 sm:right-6 z-50 bg-[#0B1B3D] text-white px-4 py-2.5 sm:px-5 sm:py-3 rounded-lg shadow-xl text-xs font-semibold flex items-center gap-2 border-l-4 border-[#A60F2D]"
           >
-            <Sparkles className="w-4 h-4 text-amber-400" />
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
             <span>{toastMessage}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
       <div>
-        {/* --- TOPBAR UTILITIES (FITA Navy) --- */}
-        <div className="bg-[#0B1B3D] text-white text-xs border-b border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-10 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="font-bold tracking-wider text-slate-300">FEDERAZIONE ITALIANA TAEKWONDO</span>
-              <span className="hidden sm:inline text-slate-500">|</span>
-              <span className="hidden sm:inline text-slate-300">Commissione Nazionale Arbitrale</span>
+        {/* --- TOPBAR UTILITIES RESPONSIVE --- */}
+        <div className="bg-[#0B1B3D] text-white text-[11px] sm:text-xs border-b border-slate-800">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 sm:py-0 sm:h-10 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-4 truncate">
+              <span className="font-bold tracking-wider text-slate-300 truncate">FEDERAZIONE ITALIANA TAEKWONDO</span>
+              <span className="hidden md:inline text-slate-500">|</span>
+              <span className="hidden md:inline text-slate-300">Commissione Nazionale Arbitrale</span>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Switch Ruolo Admin/User per test */}
+            <div className="flex items-center gap-3 ml-auto sm:ml-0">
+              {/* Switch Ruolo Admin/User */}
               {user && (
                 <button
                   onClick={toggleUserRole}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200 border border-slate-700 transition-colors"
+                  className="flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] sm:text-[11px] text-slate-200 border border-slate-700 transition-colors"
                   title="Cambia tra Utente Arbitro e Amministratore"
                 >
                   <RefreshCw className="w-3 h-3 text-amber-400" />
@@ -644,86 +657,83 @@ export default function FitaTaekwondoApp() {
 
               {/* User Profile / Login */}
               {user ? (
-                <div className="flex items-center gap-3">
-                  {/* Pulsante Apri Area Privata */}
+                <div className="flex items-center gap-2 sm:gap-3">
                   <button
                     onClick={openProfileModal}
-                    className="flex items-center gap-1.5 text-slate-200 hover:text-amber-400 font-semibold transition-colors"
-                    title="Apri Area Privata e Impostazioni Profilo"
+                    className="flex items-center gap-1 text-slate-200 hover:text-amber-400 font-semibold transition-colors text-xs"
+                    title="Apri Area Privata"
                   >
-                    <Settings className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{user.firstName} {user.lastName}</span>
+                    <Settings className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="truncate max-w-[100px] sm:max-w-none">{user.firstName} {user.lastName}</span>
                   </button>
 
                   {user.role === 'admin' && (
                     <button
                       onClick={() => setIsAdminUsersModalOpen(true)}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#A60F2D] text-white text-[10px] font-bold"
+                      className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded bg-[#A60F2D] text-white text-[10px] font-bold"
                     >
-                      <Users className="w-3 h-3" /> Utenti Admin
+                      <Users className="w-3 h-3" /> Admin
                     </button>
                   )}
                   
-                  <button onClick={() => setUser(null)} className="text-slate-400 hover:text-white" title="Logout">
+                  <button onClick={handleLogout} className="text-slate-400 hover:text-white p-1" title="Logout">
                     <LogOut className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ) : (
                 <button
                   onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }}
-                  className="flex items-center gap-1.5 text-slate-200 hover:text-white font-semibold"
+                  className="flex items-center gap-1.5 text-slate-200 hover:text-white font-semibold text-xs"
                 >
                   <User className="w-3.5 h-3.5" />
-                  <span>Area Riservata / Accedi</span>
+                  <span>Accedi</span>
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* --- HEADER ISTITUZIONALE FITA --- */}
+        {/* --- HEADER ISTITUZIONALE RESPONSIVE --- */}
         <header className="bg-white border-b border-slate-200 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 cursor-pointer" onClick={() => setActiveSectionId('home')}>
-              <div className="w-12 h-12 bg-[#0B1B3D] rounded-lg flex items-center justify-center text-white font-black text-xl shadow-md border-b-4 border-[#A60F2D]">
-                FITA
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-black tracking-tight text-[#0B1B3D]">PORTALE ARBITRALE</h1>
-                  <span className="bg-slate-100 text-[#0B1B3D] text-[10px] font-bold px-2 py-0.5 rounded border border-slate-300">
-                    FITA / WT
-                  </span>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
+            
+            <div className="flex items-center justify-between sm:justify-start gap-3">
+              <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveSectionId('home')}>
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#0B1B3D] rounded-lg flex items-center justify-center text-white font-black text-lg sm:text-xl shadow-md border-b-4 border-[#A60F2D] shrink-0">
+                  FITA
                 </div>
-                <p className="text-xs text-slate-500 font-medium">Regolamenti, Materiali Didattici & Eventi Ufficiali</p>
+                <div>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <h1 className="text-base sm:text-xl font-black tracking-tight text-[#0B1B3D]">PORTALE ARBITRALE</h1>
+                    <span className="bg-slate-100 text-[#0B1B3D] text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-300">
+                      FITA / WT
+                    </span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-500 font-medium leading-tight">Regolamenti & Materiali Didattici</p>
+                </div>
               </div>
-            </div>
 
-            {/* PULSANTI NOTIFICHE & RICERCA (DIMENSIONE IDENTICA) */}
-            <div className="flex items-center gap-3">
+              {/* Pulsante Notifiche Mobile */}
               <button
                 onClick={toggleNotifications}
-                className={`h-9 px-3.5 rounded-lg border text-xs font-bold flex items-center gap-2 shadow-sm transition-all whitespace-nowrap ${
+                className={`sm:hidden h-9 px-2.5 rounded-lg border text-xs font-bold flex items-center justify-center shadow-sm transition-all ${
                   notificationsEnabled
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                    : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                    : 'bg-slate-100 text-slate-600 border-slate-300'
                 }`}
-                title="Attiva/Disattiva notifiche per nuove comunicazioni"
+                title="Attiva/Disattiva notifiche"
               >
                 {notificationsEnabled ? (
-                  <>
-                    <Bell className="w-4 h-4 text-emerald-600 fill-emerald-600/20 shrink-0" />
-                    <span className="hidden sm:inline">Notifiche Attive</span>
-                  </>
+                  <Bell className="w-4 h-4 text-emerald-600 fill-emerald-600/20" />
                 ) : (
-                  <>
-                    <BellOff className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="hidden sm:inline">Notifiche Disattivate</span>
-                  </>
+                  <BellOff className="w-4 h-4 text-slate-400" />
                 )}
               </button>
+            </div>
 
-              <div className="w-full max-w-xs relative hidden sm:flex items-center h-9">
+            {/* Ricerca e Notifiche Desktop */}
+            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              <div className="w-full sm:w-64 relative flex items-center h-9">
                 <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
@@ -733,26 +743,47 @@ export default function FitaTaekwondoApp() {
                   className="w-full h-9 bg-slate-100 border border-slate-300 rounded-lg pl-9 pr-3 text-xs text-slate-800 focus:outline-none focus:border-[#0B1B3D]"
                 />
               </div>
+
+              <button
+                onClick={toggleNotifications}
+                className={`hidden sm:flex h-9 px-3.5 rounded-lg border text-xs font-bold items-center gap-2 shadow-sm transition-all whitespace-nowrap ${
+                  notificationsEnabled
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                    : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                {notificationsEnabled ? (
+                  <>
+                    <Bell className="w-4 h-4 text-emerald-600 fill-emerald-600/20 shrink-0" />
+                    <span>Notifiche Attive</span>
+                  </>
+                ) : (
+                  <>
+                    <BellOff className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Notifiche Disattivate</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </header>
 
-        {/* --- NAVIGAZIONE FISSA A 5 COLONNE --- */}
+        {/* --- NAVIGAZIONE SCORREVOLE O RIZONTALE SU MOBILE --- */}
         <nav className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+            <div className="flex sm:grid sm:grid-cols-5 gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
               
               {/* Tab HOME */}
               <button
                 onClick={() => setActiveSectionId('home')}
-                className={`py-2.5 px-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                className={`py-2 px-3 sm:py-2.5 sm:px-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 border shrink-0 sm:shrink ${
                   activeSectionId === 'home'
                     ? 'bg-[#0B1B3D] text-white border-[#0B1B3D] shadow-sm'
                     : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                 }`}
               >
                 <HomeIcon className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="truncate">Home / News</span>
+                <span className="whitespace-nowrap sm:truncate">Home / News</span>
               </button>
 
               {/* Tab SEZIONI REGOLAMENTO */}
@@ -762,14 +793,14 @@ export default function FitaTaekwondoApp() {
                   <button
                     key={sec.id}
                     onClick={() => { setActiveSectionId(sec.id); setActiveTabMode('rules'); }}
-                    className={`py-2.5 px-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                    className={`py-2 px-3 sm:py-2.5 sm:px-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 border shrink-0 sm:shrink ${
                       isActive
                         ? 'bg-[#0B1B3D] text-white border-[#0B1B3D] shadow-sm'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
                     <BookOpen className={`w-4 h-4 shrink-0 ${isActive ? 'text-red-400' : 'text-slate-400'}`} />
-                    <span className="truncate">{sec.title}</span>
+                    <span className="whitespace-nowrap sm:truncate">{sec.title}</span>
                   </button>
                 );
               })}
@@ -778,30 +809,28 @@ export default function FitaTaekwondoApp() {
         </nav>
 
         {/* --- CONTENUTO PRINCIPALE --- */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 w-full">
           
           {/* ==================== VISTA 1: HOME / NEWS & EVENTI ==================== */}
           {activeSectionId === 'home' && (
             <div className="space-y-6">
               
-              {/* Header Home con Filtri Categoria */}
-              <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="bg-white p-4 sm:p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-bold text-[#A60F2D] uppercase tracking-wider mb-1">
                     <Megaphone className="w-4 h-4" /> Comunicati Ufficiali
                   </div>
-                  <h2 className="text-2xl font-black text-[#0B1B3D]">Notizie & Gare Regionali / Interregionali</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Aggiornamenti sulle prossime competizioni, convocazioni arbitrali e novità regolamentari.</p>
+                  <h2 className="text-xl sm:text-2xl font-black text-[#0B1B3D]">Notizie & Gare Regionali</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Aggiornamenti sulle prossime competizioni e convocazioni arbitrali.</p>
                 </div>
 
-                <div className="flex items-center gap-2 self-stretch sm:self-auto">
-                  {/* Filtro Categoria Notizie */}
-                  <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200 text-xs font-bold">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200 text-xs font-bold overflow-x-auto max-w-full">
                     {['Tutti', 'Regionale', 'Interregionale', 'Nazionale'].map((cat) => (
                       <button
                         key={cat}
                         onClick={() => setSelectedNewsCategory(cat)}
-                        className={`px-2.5 py-1 rounded transition-colors ${
+                        className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
                           selectedNewsCategory === cat ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
@@ -810,7 +839,6 @@ export default function FitaTaekwondoApp() {
                     ))}
                   </div>
 
-                  {/* Tasto Pubblica Notizia per Admin */}
                   {user && user.role === 'admin' && (
                     <button
                       onClick={() => setIsNewsModalOpen(true)}
@@ -823,25 +851,24 @@ export default function FitaTaekwondoApp() {
                 </div>
               </div>
 
-              {/* Griglia Notizie */}
               {filteredNews.length === 0 ? (
-                <div className="bg-white p-12 text-center rounded-lg border border-slate-200">
+                <div className="bg-white p-8 sm:p-12 text-center rounded-lg border border-slate-200">
                   <p className="text-slate-500 font-semibold text-sm">Nessuna notizia disponibile per la categoria selezionata.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {filteredNews.map((item) => (
                     <div key={item.id} className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm flex flex-col justify-between">
                       <div>
                         {item.image && (
-                          <div className="h-44 bg-slate-100 overflow-hidden relative">
+                          <div className="h-40 sm:h-44 bg-slate-100 overflow-hidden relative">
                             <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
                             <span className="absolute top-3 left-3 bg-[#0B1B3D] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">
                               {item.category}
                             </span>
                           </div>
                         )}
-                        <div className="p-5 space-y-3">
+                        <div className="p-4 sm:p-5 space-y-3">
                           {!item.image && (
                             <span className="inline-block bg-[#0B1B3D] text-white text-[10px] font-bold px-2 py-0.5 rounded mb-1">
                               {item.category}
@@ -877,46 +904,43 @@ export default function FitaTaekwondoApp() {
           {currentSection && (
             <div className="space-y-6">
               
-              {/* Header Sezione */}
-              <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="bg-white p-4 sm:p-6 rounded-lg border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-bold text-[#A60F2D] uppercase tracking-wider mb-1">
                     <span>Commissione Arbitrale FITA</span>
                     <span>/</span>
                     <span>{currentSection.code}</span>
                   </div>
-                  <h2 className="text-2xl font-black text-[#0B1B3D]">{currentSection.title}</h2>
+                  <h2 className="text-xl sm:text-2xl font-black text-[#0B1B3D]">{currentSection.title}</h2>
                   <p className="text-xs text-slate-500 mt-0.5">{currentSection.subtitle}</p>
                 </div>
 
-                {/* Sub-Tab Switcher */}
-                <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200">
+                <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200 self-stretch sm:self-auto">
                   <button
                     onClick={() => setActiveTabMode('rules')}
-                    className={`px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       activeTabMode === 'rules' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <BookOpen className="w-3.5 h-3.5" /> Articoli Regolamento
+                    <BookOpen className="w-3.5 h-3.5" /> Articoli
                   </button>
                   <button
                     onClick={() => setActiveTabMode('materials')}
-                    className={`px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       activeTabMode === 'materials' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <Download className="w-3.5 h-3.5" /> Materiali Scaricabili ({currentSection.documents?.length || 0})
+                    <Download className="w-3.5 h-3.5" /> Documenti ({currentSection.documents?.length || 0})
                   </button>
                 </div>
               </div>
 
-              {/* TAB 1: ARTICOLI REGOLAMENTO */}
               {activeTabMode === 'rules' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
                     <h3 className="text-sm font-bold text-[#0B1B3D] uppercase tracking-wider">Norme & Articoli</h3>
                     
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => setShowOnlyFavorites(prev => !prev)}
                         className={`px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1.5 border ${
@@ -926,7 +950,7 @@ export default function FitaTaekwondoApp() {
                         }`}
                       >
                         <Star className={`w-3.5 h-3.5 ${showOnlyFavorites ? 'fill-white' : 'text-amber-500'}`} />
-                        <span>{showOnlyFavorites ? 'Mostrando solo Preferiti' : 'Filtra per Preferiti'}</span>
+                        <span>{showOnlyFavorites ? 'Solo Preferiti' : 'Filtra per Preferiti'}</span>
                       </button>
 
                       {user && user.role === 'admin' && (
@@ -950,9 +974,9 @@ export default function FitaTaekwondoApp() {
                   </div>
 
                   {filteredSubsections.length === 0 ? (
-                    <div className="bg-white p-12 text-center rounded-lg border border-slate-200">
+                    <div className="bg-white p-8 sm:p-12 text-center rounded-lg border border-slate-200">
                       <p className="text-slate-500 text-sm font-semibold">
-                        {showOnlyFavorites ? 'Nessun articolo salvato tra i preferiti in questa sezione.' : 'Nessun articolo trovato.'}
+                        {showOnlyFavorites ? 'Nessun articolo salvato tra i preferiti.' : 'Nessun articolo trovato.'}
                       </p>
                     </div>
                   ) : (
@@ -964,14 +988,14 @@ export default function FitaTaekwondoApp() {
                         <div key={sub.id} className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
                           <div
                             onClick={() => toggleAccordion(sub.id)}
-                            className="p-5 flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 select-none border-b border-slate-100"
+                            className="p-4 sm:p-5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 select-none border-b border-slate-100"
                           >
                             <div className="flex items-center gap-3">
-                              <div className={`p-2 rounded ${isOpen ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                              <div className={`p-2 rounded shrink-0 ${isOpen ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-500'}`}>
                                 <BookOpen className="w-4 h-4" />
                               </div>
                               <div>
-                                <h3 className="text-base font-bold text-[#0B1B3D]">{sub.title}</h3>
+                                <h3 className="text-sm sm:text-base font-bold text-[#0B1B3D]">{sub.title}</h3>
                                 {sub.tags && (
                                   <div className="flex flex-wrap gap-1 mt-1">
                                     {sub.tags.map((tag, idx) => (
@@ -984,17 +1008,17 @@ export default function FitaTaekwondoApp() {
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); toggleFavorite(sub.id); }}
-                                className={`p-2 rounded transition-colors ${isFav ? 'text-amber-500 bg-amber-50' : 'text-slate-400 hover:text-slate-600'}`}
+                                className={`p-1.5 sm:p-2 rounded transition-colors ${isFav ? 'text-amber-500 bg-amber-50' : 'text-slate-400 hover:text-slate-600'}`}
                               >
                                 <Star className={`w-4 h-4 ${isFav ? 'fill-amber-500' : ''}`} />
                               </button>
 
                               {user && user.role === 'admin' && (
-                                <div className="flex items-center gap-1 border-l border-slate-200 pl-2 ml-1" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-1 border-l border-slate-200 pl-1 sm:pl-2 ml-1" onClick={(e) => e.stopPropagation()}>
                                   <button onClick={() => handleEditClick(sub, currentSection.id)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded">
                                     <Edit3 className="w-3.5 h-3.5" />
                                   </button>
@@ -1009,8 +1033,8 @@ export default function FitaTaekwondoApp() {
                           </div>
 
                           {isOpen && (
-                            <div className="p-6 bg-slate-50/50 border-t border-slate-100 text-xs text-slate-700 leading-relaxed">
-                              <div className="whitespace-pre-line text-sm text-slate-800 font-normal max-w-none">
+                            <div className="p-4 sm:p-6 bg-slate-50/50 border-t border-slate-100 text-xs text-slate-700 leading-relaxed">
+                              <div className="whitespace-pre-line text-xs sm:text-sm text-slate-800 font-normal max-w-none">
                                 {sub.content}
                               </div>
 
@@ -1056,13 +1080,12 @@ export default function FitaTaekwondoApp() {
                 </div>
               )}
 
-              {/* TAB 2: MATERIALI & DOCUMENTI SCARICABILI */}
               {activeTabMode === 'materials' && (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h3 className="text-sm font-bold text-[#0B1B3D] uppercase tracking-wider">Documenti & Slide Didattiche</h3>
-                      <p className="text-xs text-slate-500">Materiale scaricabile per la sezione {currentSection.title}.</p>
+                      <h3 className="text-sm font-bold text-[#0B1B3D] uppercase tracking-wider">Documenti Didattici</h3>
+                      <p className="text-xs text-slate-500">Materiale scaricabile per {currentSection.title}.</p>
                     </div>
 
                     {user && user.role === 'admin' && (
@@ -1070,22 +1093,22 @@ export default function FitaTaekwondoApp() {
                         onClick={() => setIsDocModalOpen(true)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-[#0B1B3D] text-white font-bold text-xs shadow"
                       >
-                        <Upload className="w-3.5 h-3.5" /> Carica Nuovo Documento
+                        <Upload className="w-3.5 h-3.5" /> Carica Documento
                       </button>
                     )}
                   </div>
 
                   {(!currentSection.documents || currentSection.documents.length === 0) ? (
-                    <div className="bg-white p-12 text-center rounded-lg border border-slate-200">
+                    <div className="bg-white p-8 sm:p-12 text-center rounded-lg border border-slate-200">
                       <FileText className="w-10 h-10 text-slate-400 mx-auto mb-2" />
                       <p className="text-slate-600 font-bold text-sm">Nessun documento caricato per questa sezione.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {currentSection.documents.map((doc) => (
-                        <div key={doc.id} className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex items-start justify-between gap-4">
+                        <div key={doc.id} className="bg-white p-4 sm:p-5 rounded-lg border border-slate-200 shadow-sm flex items-start justify-between gap-4">
                           <div className="flex items-start gap-3">
-                            <div className={`p-3 rounded-lg flex items-center justify-center text-white font-black text-xs ${
+                            <div className={`p-3 rounded-lg flex items-center justify-center text-white font-black text-xs shrink-0 ${
                               doc.format === 'PPTX' ? 'bg-orange-600' : 'bg-red-700'
                             }`}>
                               {doc.format}
@@ -1101,7 +1124,7 @@ export default function FitaTaekwondoApp() {
                             </div>
                           </div>
 
-                          <div className="flex flex-col items-end gap-2">
+                          <div className="flex flex-col items-end gap-2 shrink-0">
                             <a
                               href={doc.url}
                               download={doc.title}
@@ -1139,31 +1162,31 @@ export default function FitaTaekwondoApp() {
       <footer className="bg-[#0B1B3D] text-slate-400 text-xs py-6 border-t border-slate-800 w-full mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[#A60F2D] text-white font-black rounded flex items-center justify-center text-xs">
+            <div className="w-8 h-8 bg-[#A60F2D] text-white font-black rounded flex items-center justify-center text-xs shrink-0">
               FITA
             </div>
             <div>
               <p className="text-white font-bold">Federazione Italiana Taekwondo</p>
-              <p className="text-[10px] text-slate-400">Tutti i diritti riservati © 2026 - Documentazione Arbitrale Ufficiale</p>
+              <p className="text-[10px] text-slate-400">Tutti i diritti riservati © 2026 - Documentazione Ufficiale</p>
             </div>
           </div>
-          <div className="text-[11px] text-slate-400">
-            Regolamento Kyorugi • Video Replay • Poomsae • Freestyle • Materiali Didattici
+          <div className="text-[11px] text-slate-400 text-center sm:text-right">
+            Regolamento Kyorugi • Video Replay • Poomsae • Freestyle
           </div>
         </div>
       </footer>
 
-      {/* --- MODAL AREA PRIVATA & IMPOSTAZIONI PROFILO (2 SCHEDE) --- */}
+      {/* --- MODAL AREA PRIVATA & IMPOSTAZIONI PROFILO --- */}
       <AnimatePresence>
         {isProfileModalOpen && user && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-white rounded-lg border border-slate-200 p-6 shadow-2xl relative space-y-4 text-xs">
+            <div className="w-full max-w-lg bg-white rounded-lg border border-slate-200 p-5 sm:p-6 shadow-2xl relative space-y-4 text-xs max-h-[90vh] overflow-y-auto">
               <button onClick={() => setIsProfileModalOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
 
               <div className="flex items-center gap-3 pb-3 border-b border-slate-200">
-                <div className="w-10 h-10 rounded-full bg-[#0B1B3D] text-white font-bold flex items-center justify-center text-sm">
+                <div className="w-10 h-10 rounded-full bg-[#0B1B3D] text-white font-bold flex items-center justify-center text-sm shrink-0">
                   {user.firstName?.[0]}{user.lastName?.[0]}
                 </div>
                 <div>
@@ -1172,7 +1195,6 @@ export default function FitaTaekwondoApp() {
                 </div>
               </div>
 
-              {/* Sub-Tabs: Dati Personali vs Sicurezza */}
               <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200 font-bold">
                 <button
                   onClick={() => setProfileTabMode('dati')}
@@ -1192,10 +1214,9 @@ export default function FitaTaekwondoApp() {
                 </button>
               </div>
 
-              {/* TAB 1: MODIFICA DATI PERSONALI */}
               {profileTabMode === 'dati' && (
                 <form onSubmit={handleSaveProfileData} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-slate-600 font-bold mb-1">Nome</label>
                       <input
@@ -1253,7 +1274,6 @@ export default function FitaTaekwondoApp() {
                 </form>
               )}
 
-              {/* TAB 2: SICUREZZA & PASSWORD */}
               {profileTabMode === 'sicurezza' && (
                 <form onSubmit={handleSavePasswordChange} className="space-y-3">
                   <div>
@@ -1308,16 +1328,16 @@ export default function FitaTaekwondoApp() {
         )}
       </AnimatePresence>
 
-      {/* --- MODAL LOGIN / REGISTRAZIONE / RECUPERO PASSWORD --- */}
+      {/* --- MODAL LOGIN / REGISTRAZIONE CON RICORDAMI --- */}
       <AnimatePresence>
         {authModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bg-white rounded-lg border border-slate-200 p-6 shadow-2xl relative text-xs">
+            <div className="w-full max-w-sm bg-white rounded-lg border border-slate-200 p-5 sm:p-6 shadow-2xl relative text-xs max-h-[90vh] overflow-y-auto">
               <button onClick={() => setAuthModalOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="text-center mb-6">
+              <div className="text-center mb-5">
                 <div className="w-10 h-10 bg-[#0B1B3D] rounded-lg text-white font-black flex items-center justify-center mx-auto mb-2 shadow-md border-b-2 border-[#A60F2D]">
                   FITA
                 </div>
@@ -1364,26 +1384,45 @@ export default function FitaTaekwondoApp() {
                     />
                   </div>
 
+                  {/* CASCELLA RICORDAMI */}
+                  <div className="py-1">
+                    <label
+                      onClick={() => setRememberMe(!rememberMe)}
+                      className="flex items-center gap-2 cursor-pointer text-slate-600 font-semibold select-none"
+                    >
+                      {rememberMe ? (
+                        <CheckSquare className="w-4 h-4 text-[#0B1B3D]" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400" />
+                      )}
+                      <span>Ricordami su questo dispositivo</span>
+                    </label>
+                  </div>
+
                   <button type="submit" className="w-full py-2.5 rounded bg-[#0B1B3D] hover:bg-slate-800 text-white font-bold transition-colors shadow">
                     Accedi
                   </button>
 
-                  {/* Pulsante di scelta rapida Admin per facilità di test */}
                   <div className="pt-2 border-t border-slate-100 text-center">
                     <button
                       type="button"
                       onClick={() => {
-                        setUser({
+                        const adminUser = {
                           id: 'u1',
                           firstName: 'Paolo',
                           lastName: 'Romano',
                           email: 'admin@taekwondo.it',
-                          role: 'admin',
+                          role: 'admin' as const,
                           region: 'Campania',
                           badgeId: 'FITA-ARB-001'
-                        });
+                        };
+                        setUser(adminUser);
+                        if (rememberMe) {
+                          localStorage.setItem('tkd_remember_me', 'true');
+                          localStorage.setItem('tkd_current_user', JSON.stringify(adminUser));
+                        }
                         setAuthModalOpen(false);
-                        showToast('Accesso rapido esguito come Admin (Paolo Romano)');
+                        showToast('Accesso come Admin (Paolo Romano)');
                       }}
                       className="text-[11px] text-[#A60F2D] font-bold hover:underline"
                     >
@@ -1392,7 +1431,7 @@ export default function FitaTaekwondoApp() {
                   </div>
 
                   <div className="text-center pt-3 border-t border-slate-200">
-                    <span className="text-slate-500">Non hai ancora un account? </span>
+                    <span className="text-slate-500">Non hai un account? </span>
                     <button
                       type="button"
                       onClick={() => setAuthMode('register')}
@@ -1471,7 +1510,7 @@ export default function FitaTaekwondoApp() {
                     </div>
 
                     <div>
-                      <label className="block text-slate-600 font-bold mb-1">Ruolo Iniziale</label>
+                      <label className="block text-slate-600 font-bold mb-1">Ruolo</label>
                       <select
                         value={authRoleChoice}
                         onChange={(e) => setAuthRoleChoice(e.target.value as any)}
@@ -1481,6 +1520,20 @@ export default function FitaTaekwondoApp() {
                         <option value="admin">Amministratore</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div className="py-1">
+                    <label
+                      onClick={() => setRememberMe(!rememberMe)}
+                      className="flex items-center gap-2 cursor-pointer text-slate-600 font-semibold select-none"
+                    >
+                      {rememberMe ? (
+                        <CheckSquare className="w-4 h-4 text-[#0B1B3D]" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400" />
+                      )}
+                      <span>Ricordami su questo dispositivo</span>
+                    </label>
                   </div>
 
                   <button type="submit" className="w-full py-2.5 rounded bg-[#0B1B3D] hover:bg-slate-800 text-white font-bold transition-colors shadow">
@@ -1542,7 +1595,7 @@ export default function FitaTaekwondoApp() {
       <AnimatePresence>
         {isDocModalOpen && currentSection && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-md bg-white rounded-lg border border-slate-200 p-6 shadow-2xl space-y-4 text-xs">
+            <div className="w-full max-w-md bg-white rounded-lg border border-slate-200 p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-base font-bold text-[#0B1B3D]">Carica Documento ({currentSection.title})</h3>
                 <button onClick={() => setIsDocModalOpen(false)} className="text-slate-400 hover:text-slate-600">
@@ -1567,7 +1620,7 @@ export default function FitaTaekwondoApp() {
                   <label className="block text-slate-600 font-bold mb-1">Descrizione breve</label>
                   <input
                     type="text"
-                    placeholder="Es. Slide PowerPoint mostrate al corso d'aggiornamento"
+                    placeholder="Es. Slide PowerPoint corso d'aggiornamento"
                     value={docDescription}
                     onChange={(e) => setDocDescription(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-slate-800"
@@ -1607,7 +1660,7 @@ export default function FitaTaekwondoApp() {
       <AnimatePresence>
         {isNewsModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-white rounded-lg border border-slate-200 p-6 shadow-2xl space-y-4 text-xs">
+            <div className="w-full max-w-lg bg-white rounded-lg border border-slate-200 p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-base font-bold text-[#0B1B3D]">Pubblica Notizia in Home</h3>
                 <button onClick={() => setIsNewsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
@@ -1628,7 +1681,7 @@ export default function FitaTaekwondoApp() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <label className="block text-slate-600 font-bold mb-1">Categoria</label>
                     <select
@@ -1659,7 +1712,7 @@ export default function FitaTaekwondoApp() {
                   <textarea
                     rows={4}
                     required
-                    placeholder="Scrivi qui i dettagli della notizia o dell'evento..."
+                    placeholder="Scrivi qui i dettagli..."
                     value={newsContent}
                     onChange={(e) => setNewsContent(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-slate-800"
@@ -1667,7 +1720,7 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 <div>
-                  <label className="block text-slate-600 font-bold mb-1">URL Locandina / Immagine (Opzionale)</label>
+                  <label className="block text-slate-600 font-bold mb-1">URL Immagine (Opzionale)</label>
                   <input
                     type="url"
                     placeholder="https://..."
@@ -1696,7 +1749,7 @@ export default function FitaTaekwondoApp() {
         {activeVideoModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
             <div className="w-full max-w-2xl bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xl">
-              <div className="p-4 bg-[#0B1B3D] text-white flex items-center justify-between">
+              <div className="p-3 sm:p-4 bg-[#0B1B3D] text-white flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-2">
                     <Video className="w-4 h-4 text-red-400" />
@@ -1725,7 +1778,7 @@ export default function FitaTaekwondoApp() {
       <AnimatePresence>
         {isEditingModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-white rounded-lg border border-slate-200 p-6 shadow-2xl space-y-4 text-xs">
+            <div className="w-full max-w-lg bg-white rounded-lg border border-slate-200 p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-base font-bold text-[#0B1B3D]">
                   {editingSubsection ? 'Modifica Articolo' : 'Nuovo Articolo di Regolamento'}
@@ -1792,7 +1845,7 @@ export default function FitaTaekwondoApp() {
                           mediaSourceType === 'file' ? 'bg-[#0B1B3D] text-white' : 'text-slate-600'
                         }`}
                       >
-                        <Upload className="w-3 h-3" /> Dal Dispositivo
+                        <Upload className="w-3 h-3" /> Dispositivo
                       </button>
                       <button
                         type="button"
@@ -1863,7 +1916,7 @@ export default function FitaTaekwondoApp() {
       <AnimatePresence>
         {isAdminUsersModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-md bg-white rounded-lg border border-slate-200 p-6 shadow-2xl space-y-4">
+            <div className="w-full max-w-md bg-white rounded-lg border border-slate-200 p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-base font-bold text-[#0B1B3D] flex items-center gap-2">
                   <Users className="w-4 h-4 text-red-600" />
