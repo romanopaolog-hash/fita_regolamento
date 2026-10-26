@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-[#A60F2D]';
 import {
   Search,
   User,
@@ -33,14 +33,12 @@ import {
   CheckCircle,
   CheckSquare,
   Square,
-  Lock,
-  ShieldCheck
+  ShieldCheck,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 
-// CODICE SEGRETO PER ABILITARE/REGISTRARE UN AMMINISTRATORE
-const ADMIN_SECRET_KEY = 'FITA2026SECURE';
-
-// --- DATI DI DEFAULT ---
+// --- DATI INIZIALI PREDEFINITI ---
 const DEFAULT_NEWS = [
   {
     id: 'news-1',
@@ -102,7 +100,7 @@ const DEFAULT_SECTIONS = [
       {
         id: 'vr1',
         title: 'Procedura di Richiesta e Cartellino Coach',
-        content: `Ogni coach riceve 1 quota (cartellino VR) all'inizio dell'incontro.\n\n- Se il ricorso viene ACCOLTO dalla giuria di revisione, la quota viene restituita.\n- Se il ricorso viene RESPINTO, la quota viene persa per la durata dell'incontro.\n- La richiesta deve essere effettuata entro 5 seconds dalla conclusione dell'azione.`,
+        content: `Ogni coach riceve 1 quota (cartellino VR) all'inizio dell'incontro.\n\n- Se il ricorso viene ACCOLTO dalla giuria di revisione, la quota viene restituita.\n- Se il ricorso viene RESPINTO, la quota viene persa per la durata dell'incontro.\n- La richiesta deve essere effettuata entro 5 secondi dalla conclusione dell'azione.`,
         tags: ['VR', 'Cartellino', 'Tempistiche'],
         media: [
           { type: 'video', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', caption: 'Esempio di richiesta VR per assegnazione punti alla testa' }
@@ -153,10 +151,10 @@ const DEFAULT_SECTIONS = [
   }
 ];
 
-// LISTA UTENTI CON PASSWORD E RUOLI PROTETTI
+// LISTA UTENTI INIZIALE
 const DEFAULT_USERS = [
-  { id: 'u1', firstName: 'Paolo', lastName: 'Romano', email: 'admin@taekwondo.it', password: 'AdminFITA2026!', role: 'admin' as const, region: 'Campania', badgeId: 'FITA-ARB-001' },
-  { id: 'u2', firstName: 'Marco', lastName: 'Rossi', email: 'marco.arbitro@fita.it', password: 'password123', role: 'user' as const, region: 'Lazio', badgeId: 'FITA-ARB-104' }
+  { id: 'u1', firstName: 'Paolo', lastName: 'Romano', email: 'admin@taekwondo.it', password: 'AdminFITA2026!', role: 'admin' as const, isSystemAdmin: true, region: 'Campania', badgeId: 'FITA-ARB-001' },
+  { id: 'u2', firstName: 'Marco', lastName: 'Rossi', email: 'marco.arbitro@fita.it', password: 'password123', role: 'user' as const, isSystemAdmin: false, region: 'Lazio', badgeId: 'FITA-ARB-104' }
 ];
 
 export default function FitaTaekwondoApp() {
@@ -173,13 +171,14 @@ export default function FitaTaekwondoApp() {
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({});
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  // STATO UTENTE: DISCONNESSO DI DEFAULT (NESSUNA SESSIONE APERTA)
+  // UTENTE CORRENTE (NULL = NON AUTENTICATO)
   const [user, setUser] = useState<{
     id: string;
     firstName: string;
     lastName: string;
     email: string;
     role: 'user' | 'admin';
+    isSystemAdmin?: boolean;
     region: string;
     badgeId: string;
   } | null>(null);
@@ -189,14 +188,12 @@ export default function FitaTaekwondoApp() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
 
-  // Form Autenticazione
+  // Form Registrazione / Login
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authFirstName, setAuthFirstName] = useState('');
   const [authLastName, setAuthLastName] = useState('');
   const [authRegion, setAuthRegion] = useState('Campania');
-  const [authRoleChoice, setAuthRoleChoice] = useState<'user' | 'admin'>('user');
-  const [authAdminCode, setAuthAdminCode] = useState('');
 
   // Profilo & Modali
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -241,6 +238,10 @@ export default function FitaTaekwondoApp() {
   const [docUrl, setDocUrl] = useState('');
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Controllo se l'utente loggato è registrato come Admin nel sistema
+  const currentUserRecord = usersList.find(u => u.id === user?.id || u.email.toLowerCase() === user?.email.toLowerCase());
+  const isUserAnAdminInSystem = currentUserRecord?.role === 'admin' || user?.isSystemAdmin === true;
 
   // LocalStorage Persistenza
   useEffect(() => {
@@ -287,27 +288,18 @@ export default function FitaTaekwondoApp() {
     setOpenAccordions(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // VERIFICA SICURA DEL CAMBIO RUOLO NELLA TOPBAR
+  // SWITCH RUOLO SENZA CODICE (DISPONIBILE SOLO AGLI ADMIN)
   const toggleUserRole = () => {
-    if (!user) return;
+    if (!user || !isUserAnAdminInSystem) return;
     
-    if (user.role === 'user') {
-      const inputKey = prompt('Inserisci il Codice Segreto Autorizzazione Admin:');
-      if (inputKey !== ADMIN_SECRET_KEY) {
-        alert('Codice di autorizzazione non valido. Accesso negato.');
-        return;
-      }
-    }
-
     const newRole = user.role === 'admin' ? 'user' : 'admin';
     const updatedUser = { ...user, role: newRole as 'user' | 'admin' };
     setUser(updatedUser);
-    setUsersList(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u));
     
     if (rememberMe) {
       localStorage.setItem('tkd_current_user', JSON.stringify(updatedUser));
     }
-    showToast(`Ruolo cambiato in: ${newRole.toUpperCase()}`);
+    showToast(`Vista cambiata in: ${newRole.toUpperCase()}`);
   };
 
   const handleLogout = () => {
@@ -317,7 +309,7 @@ export default function FitaTaekwondoApp() {
     showToast('Logout effettuato');
   };
 
-  // LOGIN SICURO CON CONTROLLO PASSWORD
+  // LOGIN UTENTE
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = authEmail.trim().toLowerCase();
@@ -345,22 +337,12 @@ export default function FitaTaekwondoApp() {
     }
   };
 
-  // REGISTRAZIONE SICURA CON VERIFICA CODICE ADMIN
+  // REGISTRAZIONE STANDARD (TUTTI REGISTRATI COME UTENTI SEMPLICI)
   const handleRegisterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!authFirstName.trim() || !authLastName.trim() || !authEmail.trim() || !authPassword.trim()) {
       alert('Compilare tutti i campi obbligatori.');
       return;
-    }
-
-    let finalRole: 'user' | 'admin' = 'user';
-    if (authRoleChoice === 'admin') {
-      if (authAdminCode !== ADMIN_SECRET_KEY) {
-        alert('Codice Autorizzazione Admin errato! L account verrà creato come Utente Arbitro standard.');
-        finalRole = 'user';
-      } else {
-        finalRole = 'admin';
-      }
     }
 
     const newUserObj = {
@@ -369,20 +351,59 @@ export default function FitaTaekwondoApp() {
       lastName: authLastName.trim(),
       email: authEmail.trim(),
       password: authPassword,
-      role: finalRole,
+      role: 'user' as const,
+      isSystemAdmin: false,
       region: authRegion,
       badgeId: 'FITA-ARB-' + Math.floor(100 + Math.random() * 900)
     };
 
     setUser(newUserObj);
-    setUsersList([newUserObj, ...usersList]);
+    setUsersList([...usersList, newUserObj]);
     if (rememberMe) {
       localStorage.setItem('tkd_remember_me', 'true');
       localStorage.setItem('tkd_current_user', JSON.stringify(newUserObj));
     }
     setAuthModalOpen(false);
-    showToast(`Account registrato come ${finalRole.toUpperCase()}! Benvenuto/a ${authFirstName}`);
-    setAuthFirstName(''); setAuthLastName(''); setAuthEmail(''); setAuthPassword(''); setAuthAdminCode('');
+    showToast(`Registrazione completata! Benvenuto/a ${authFirstName}`);
+    setAuthFirstName(''); setAuthLastName(''); setAuthEmail(''); setAuthPassword('');
+  };
+
+  // GESTIONE UTENTI DA PARTE DEGLI ADMIN (PROMOZIONE / RETROCESSIONE / ELIMINAZIONE)
+  const handleToggleUserAdminRole = (targetUserId: string) => {
+    setUsersList(prev =>
+      prev.map(u => {
+        if (u.id === targetUserId) {
+          const nextRole = u.role === 'admin' ? 'user' : 'admin';
+          showToast(`Ruolo di ${u.firstName} aggiornato a ${nextRole.toUpperCase()}`);
+          return { ...u, role: nextRole, isSystemAdmin: nextRole === 'admin' };
+        }
+        return u;
+      })
+    );
+
+    // Se l'admin modifica se stesso
+    if (user && user.id === targetUserId) {
+      const nextRole = user.role === 'admin' ? 'user' : 'admin';
+      setUser({ ...user, role: nextRole, isSystemAdmin: nextRole === 'admin' });
+    }
+  };
+
+  const handleDeleteUser = (targetUserId: string) => {
+    const targetUser = usersList.find(u => u.id === targetUserId);
+    if (!targetUser) return;
+
+    if (!confirm(`Sei sicuro di voler eliminare definitivamente l'utente "${targetUser.firstName} ${targetUser.lastName}"?`)) {
+      return;
+    }
+
+    setUsersList(prev => prev.filter(u => u.id !== targetUserId));
+    showToast(`Utente ${targetUser.firstName} ${targetUser.lastName} eliminato.`);
+
+    // Se l'admin ha eliminato se stesso, esegui il logout
+    if (user && user.id === targetUserId) {
+      handleLogout();
+      setIsAdminUsersModalOpen(false);
+    }
   };
 
   const openProfileModal = () => {
@@ -585,13 +606,15 @@ export default function FitaTaekwondoApp() {
             </div>
 
             <div className="flex items-center gap-4">
-              {user && (
+              {/* PULSANTE SWITCH RUOLO: VISIBILE SOLO AGLI ACCOUNT ADMIN */}
+              {user && isUserAnAdminInSystem && (
                 <button
                   onClick={toggleUserRole}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition-colors"
+                  title="Cambia modalità di visualizzazione"
                 >
                   <RefreshCw className="w-3 h-3 text-amber-400" />
-                  <span>Ruolo: <strong className={user.role === 'admin' ? 'text-red-400' : 'text-blue-400'}>{user.role.toUpperCase()}</strong></span>
+                  <span>Vista: <strong className={user.role === 'admin' ? 'text-red-400' : 'text-blue-400'}>{user.role.toUpperCase()}</strong></span>
                 </button>
               )}
 
@@ -602,9 +625,13 @@ export default function FitaTaekwondoApp() {
                     <span>{user.firstName} {user.lastName}</span>
                   </button>
 
-                  {user.role === 'admin' && (
-                    <button onClick={() => setIsAdminUsersModalOpen(true)} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#A60F2D] text-white text-[10px] font-bold">
-                      <Users className="w-3 h-3" /> Admin
+                  {/* TASTO GESTIONE UTENTI ADMIN */}
+                  {isUserAnAdminInSystem && (
+                    <button
+                      onClick={() => setIsAdminUsersModalOpen(true)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#A60F2D] hover:bg-red-800 text-white text-xs font-bold transition-colors"
+                    >
+                      <Users className="w-3.5 h-3.5" /> Gestione Utenti
                     </button>
                   )}
                   
@@ -1037,7 +1064,7 @@ export default function FitaTaekwondoApp() {
         </button>
       </div>
 
-      {/* --- MODALE LOGIN / REGISTRAZIONE SICURO --- */}
+      {/* --- MODALE LOGIN / REGISTRAZIONE --- */}
       <AnimatePresence>
         {authModalOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/80 backdrop-blur-sm">
@@ -1049,11 +1076,11 @@ export default function FitaTaekwondoApp() {
                   FITA
                 </div>
                 <h3 className="text-base font-bold text-[#0B1B3D]">
-                  {authMode === 'login' ? 'Accesso Portale Arbitri' : 'Nuova Registrazione'}
+                  {authMode === 'login' ? 'Accesso Portale Arbitri' : 'Nuova Registrazione Utente'}
                 </h3>
               </div>
 
-              {/* MODALITA' LOGIN SERRATA */}
+              {/* LOGIN */}
               {authMode === 'login' && (
                 <form onSubmit={handleLoginSubmit} className="space-y-3">
                   <div>
@@ -1090,7 +1117,7 @@ export default function FitaTaekwondoApp() {
                 </form>
               )}
 
-              {/* MODALITA' REGISTRAZIONE CON CAMPO SEGRETO PER ADMIN */}
+              {/* REGISTRAZIONE CLASSICA SENZA RUOLI O CODICI SEGRETI */}
               {authMode === 'register' && (
                 <form onSubmit={handleRegisterSubmit} className="space-y-3">
                   <div className="grid grid-cols-2 gap-2">
@@ -1114,45 +1141,14 @@ export default function FitaTaekwondoApp() {
                     <input type="password" required placeholder="••••••••" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-slate-600 font-bold mb-1">Regione</label>
-                      <select value={authRegion} onChange={(e) => setAuthRegion(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800">
-                        {['Campania', 'Lazio', 'Lombardia', 'Piemonte', 'Sicilia', 'Veneto', 'Emilia-Romagna', 'Puglia', 'Toscana'].map(r => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-600 font-bold mb-1">Ruolo Richiesto</label>
-                      <select
-                        value={authRoleChoice}
-                        onChange={(e) => setAuthRoleChoice(e.target.value as any)}
-                        className="w-full bg-slate-50 border p-2 rounded text-slate-800 font-bold"
-                      >
-                        <option value="user">Arbitro Utente</option>
-                        <option value="admin">Amministratore</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block text-slate-600 font-bold mb-1">Regione / Comitato</label>
+                    <select value={authRegion} onChange={(e) => setAuthRegion(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800">
+                      {['Abruzzo', 'Basilicata', 'Calabria', 'Campania', 'Emilia-Romagna', 'Friuli Venezia Giulia', 'Lazio', 'Liguria', 'Lombardia', 'Marche', 'Molise', 'Piemonte', 'Puglia', 'Sardegna', 'Sicilia', 'Toscana', 'Trentino-Alto Adige', 'Umbria', 'Valle d\'Aosta', 'Veneto'].map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
                   </div>
-
-                  {/* CAMPO CODICE SEGRETO ADMIN (Mostrato solo se si richiede il ruolo Admin) */}
-                  {authRoleChoice === 'admin' && (
-                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
-                      <label className="block text-amber-900 font-bold flex items-center gap-1">
-                        <Lock className="w-3.5 h-3.5 text-amber-600" /> Codice Autorizzazione Admin *
-                      </label>
-                      <input
-                        type="password"
-                        placeholder="Inserisci PIN di sicurezza"
-                        value={authAdminCode}
-                        onChange={(e) => setAuthAdminCode(e.target.value)}
-                        className="w-full bg-white border border-amber-300 rounded p-1.5 text-slate-800 font-bold"
-                      />
-                      <p className="text-[10px] text-amber-700">Necessario per confermare i privilegi da Amministratore.</p>
-                    </div>
-                  )}
 
                   <div className="py-1">
                     <label onClick={() => setRememberMe(!rememberMe)} className="flex items-center gap-2 cursor-pointer text-slate-600 font-semibold select-none">
@@ -1162,7 +1158,7 @@ export default function FitaTaekwondoApp() {
                   </div>
 
                   <button type="submit" className="w-full py-2.5 rounded bg-[#0B1B3D] text-white font-bold shadow hover:bg-slate-800 transition-colors">
-                    Crea Account
+                    Crea Account Utente
                   </button>
 
                   <div className="text-center pt-2 border-t border-slate-200">
@@ -1173,6 +1169,74 @@ export default function FitaTaekwondoApp() {
                   </div>
                 </form>
               )}
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- PANNELLO GESTIONE UTENTI E ADMIN (SOLO PER AMMINISTRATORI) --- */}
+      <AnimatePresence>
+        {isAdminUsersModalOpen && isUserAnAdminInSystem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+            <div className="w-full max-w-lg bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <h3 className="text-base font-bold text-[#0B1B3D] flex items-center gap-2">
+                  <Users className="w-5 h-5 text-[#A60F2D]" />
+                  <span>Gestione Utenti & Amministratori</span>
+                </h3>
+                <button onClick={() => setIsAdminUsersModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {usersList.map(u => {
+                  const isAdminRole = u.role === 'admin';
+                  const isSelf = user?.id === u.id;
+
+                  return (
+                    <div key={u.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-slate-900 text-sm">{u.firstName} {u.lastName}</p>
+                          {isSelf && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">Tu</span>}
+                        </div>
+                        <p className="text-[11px] text-slate-500">{u.email} • <strong className="text-slate-700">{u.region}</strong></p>
+                        <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded font-bold ${
+                          isAdminRole ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-slate-200 text-slate-700'
+                        }`}>
+                          {isAdminRole ? '⚡ AMMINISTRATORE' : '👤 UTENTE ARBITRO'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* BOTTONE CAMBIO RUOLO */}
+                        <button
+                          onClick={() => handleToggleUserAdminRole(u.id)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                            isAdminRole
+                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                              : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                          }`}
+                          title={isAdminRole ? "Rendi Utente semplice" : "Promuovi ad Admin"}
+                        >
+                          {isAdminRole ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                          <span>{isAdminRole ? 'Rendi Utente' : 'Rendi Admin'}</span>
+                        </button>
+
+                        {/* BOTTONE ELIMINAZIONE UTENTE */}
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
+                          title="Elimina Utente"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
