@@ -152,8 +152,8 @@ const DEFAULT_SECTIONS = [
 ];
 
 const DEFAULT_USERS = [
-  { id: 'u1', firstName: 'Paolo', lastName: 'Romano', email: 'admin@taekwondo.it', password: 'admin', role: 'admin' as const, region: 'Campania', badgeId: 'FITA-ARB-001' },
-  { id: 'u2', firstName: 'Marco', lastName: 'Rossi', email: 'marco.arbitro@fita.it', password: 'user', role: 'user' as const, region: 'Lazio', badgeId: 'FITA-ARB-104' }
+  { id: 'u1', firstName: 'Paolo', lastName: 'Romano', email: 'admin@taekwondo.it', password: 'admin', role: 'admin' as const, region: 'Campania' },
+  { id: 'u2', firstName: 'Marco', lastName: 'Rossi', email: 'marco.arbitro@fita.it', password: 'user', role: 'user' as const, region: 'Lazio' }
 ];
 
 export default function FitaTaekwondoApp() {
@@ -177,7 +177,6 @@ export default function FitaTaekwondoApp() {
     email: string;
     role: 'user' | 'admin';
     region: string;
-    badgeId: string;
   } | null>(null);
 
   const [rememberMe, setRememberMe] = useState(false);
@@ -253,7 +252,6 @@ export default function FitaTaekwondoApp() {
   useEffect(() => { localStorage.setItem('tkd_favorites', JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem('tkd_users_list', JSON.stringify(usersList)); }, [usersList]);
 
-  // CONTROLLO SICURO SENZA ERRORI DI UNDEFINED
   const accountRecord = user ? usersList.find(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase()) : null;
   const isAccountAdmin = accountRecord?.role === 'admin' || user?.role === 'admin';
 
@@ -339,8 +337,7 @@ export default function FitaTaekwondoApp() {
       email: authEmail.trim(),
       password: authPassword,
       role: 'user' as const,
-      region: authRegion,
-      badgeId: 'FITA-ARB-' + Math.floor(100 + Math.random() * 900)
+      region: authRegion
     };
 
     setUser(newUserObj);
@@ -1179,7 +1176,7 @@ export default function FitaTaekwondoApp() {
                           )}
                           {isSelf && <span className="text-[10px] text-slate-400 font-semibold">(Tu)</span>}
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{u.email} • {u.region} • Badge: {u.badgeId || 'N/A'}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{u.email} • {u.region}</p>
                       </div>
 
                       <div className="flex items-center gap-1.5 justify-end">
