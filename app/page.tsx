@@ -35,7 +35,8 @@ import {
   Square,
   ShieldCheck,
   UserCheck,
-  UserX
+  UserX,
+  Pin
 } from 'lucide-react';
 
 // --- DATI DI DEFAULT ---
@@ -47,7 +48,8 @@ const DEFAULT_NEWS = [
     date: '15 Novembre 2026',
     location: 'PalaVesuvio - Napoli',
     content: 'Pubblicati gli orari delle operazioni di peso e il sorteggio dei tabelloni per tutte le categorie Cadetti, Junior e Senior. Si ricorda a tutti i convocati arbitrali di presentarsi entro le ore 08:00.',
-    image: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?auto=format&fit=crop&q=80&w=800'
+    image: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?auto=format&fit=crop&q=80&w=800',
+    isPinned: true
   },
   {
     id: 'news-2',
@@ -56,7 +58,8 @@ const DEFAULT_NEWS = [
     date: '02 Novembre 2026',
     location: 'Nazionale',
     content: 'Emanata la circolare con i nuovi chiarimenti riguardanti la tempistica di alzata del cartellino da parte del coach ed il protocollo di revisione per calci impattanti al corpetto.',
-    image: null
+    image: null,
+    isPinned: false
   }
 ];
 
@@ -151,8 +154,10 @@ const DEFAULT_SECTIONS = [
   }
 ];
 
+// UTENTI DI DEFAULT (Con l'account Admin principale protetto)
 const DEFAULT_USERS = [
-  { id: 'u1', firstName: 'Paolo', lastName: 'Romano', email: 'admin@taekwondo.it', password: 'admin', role: 'admin' as const, region: 'Campania' },
+  { id: 'u0', firstName: 'Admin', lastName: 'Admin', email: 'admin@taekwondo.it', password: 'admin', role: 'admin' as const, region: 'Nazionale' },
+  { id: 'u1', firstName: 'Paolo', lastName: 'Romano', email: 'paolo.romano@taekwondo.it', password: 'admin', role: 'admin' as const, region: 'Campania' },
   { id: 'u2', firstName: 'Marco', lastName: 'Rossi', email: 'marco.arbitro@fita.it', password: 'user', role: 'user' as const, region: 'Lazio' }
 ];
 
@@ -206,6 +211,7 @@ export default function FitaTaekwondoApp() {
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
 
+  // Form Articoli / News / Documenti
   const [editingSubsection, setEditingSubsection] = useState<any | null>(null);
   const [formSectionId, setFormSectionId] = useState('kyorugi');
   const [formTitle, setFormTitle] = useState('');
@@ -221,6 +227,7 @@ export default function FitaTaekwondoApp() {
   const [newsLocation, setNewsLocation] = useState('');
   const [newsContent, setNewsContent] = useState('');
   const [newsImage, setNewsImage] = useState('');
+  const [newsIsPinned, setNewsIsPinned] = useState(false);
 
   const [docTitle, setDocTitle] = useState('');
   const [docDescription, setDocDescription] = useState('');
@@ -254,6 +261,10 @@ export default function FitaTaekwondoApp() {
 
   const accountRecord = user ? usersList.find(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase()) : null;
   const isAccountAdmin = accountRecord?.role === 'admin' || user?.role === 'admin';
+
+  const isMainAdminAccount = (u: { email: string; firstName: string; lastName: string }) => {
+    return u.email.toLowerCase() === 'admin@taekwondo.it' || (u.firstName === 'Admin' && u.lastName === 'Admin');
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -360,6 +371,11 @@ export default function FitaTaekwondoApp() {
   };
 
   const handleDemoteToUser = (targetId: string) => {
+    const target = usersList.find(u => u.id === targetId);
+    if (target && isMainAdminAccount(target)) {
+      alert('L account Amministratore Principale non può essere declassificato.');
+      return;
+    }
     setUsersList(prev => prev.map(u => u.id === targetId ? { ...u, role: 'user' } : u));
     if (user && user.id === targetId) {
       setUser({ ...user, role: 'user' });
@@ -368,12 +384,22 @@ export default function FitaTaekwondoApp() {
   };
 
   const handleDeleteUser = (targetId: string) => {
+    const target = usersList.find(u => u.id === targetId);
+    if (target && isMainAdminAccount(target)) {
+      alert('L account Amministratore Principale non può essere eliminato.');
+      return;
+    }
     if (!confirm('Sei sicuro di voler eliminare definitivamente questo utente dal sistema?')) return;
     setUsersList(prev => prev.filter(u => u.id !== targetId));
     if (user && user.id === targetId) {
       handleLogout();
     }
     showToast('Utente eliminato.');
+  };
+
+  const togglePinNews = (newsId: string) => {
+    setNewsList(prev => prev.map(n => n.id === newsId ? { ...n, isPinned: !n.isPinned } : n));
+    showToast('Stato evidenza notizia aggiornato!');
   };
 
   const openProfileModal = () => {
@@ -408,7 +434,7 @@ export default function FitaTaekwondoApp() {
   const handleSavePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmNewPassword) {
-      alert('La nuova password e la conferma non coincidono.');
+      alert('La nuova password e la conferma non совпадаono.');
       return;
     }
     showToast('🔒 Password modificata!');
@@ -443,11 +469,12 @@ export default function FitaTaekwondoApp() {
       date: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }),
       location: newsLocation || 'Nazionale',
       content: newsContent,
-      image: newsImage || null
+      image: newsImage || null,
+      isPinned: newsIsPinned
     };
     setNewsList([newItem, ...newsList]);
     setIsNewsModalOpen(false);
-    setNewsTitle(''); setNewsContent(''); setNewsLocation(''); setNewsImage('');
+    setNewsTitle(''); setNewsContent(''); setNewsLocation(''); setNewsImage(''); setNewsIsPinned(false);
     showToast('Notizia pubblicata!');
   };
 
@@ -542,10 +569,22 @@ export default function FitaTaekwondoApp() {
     return matchesSearch && matchesFav;
   }) : [];
 
-  const filteredNews = newsList.filter(n => {
-    if (selectedNewsCategory === 'Tutti') return true;
-    return n.category === selectedNewsCategory;
-  });
+  // NOTIZIE FILTRATE E ORDINATE (IN EVIDENZA PER PRIME)
+  const filteredNews = newsList
+    .filter(n => selectedNewsCategory === 'Tutti' || n.category === selectedNewsCategory)
+    .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
+
+  // ELABORAZIONE STRUTTURATA UTENTI PER MODALE ADMIN (ESCLUSIONE ADMIN ADMIN)
+  const activeUserInList = user ? usersList.find(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase()) : null;
+  const remainingUsers = usersList.filter(u => !isMainAdminAccount(u) && u.id !== activeUserInList?.id);
+
+  const sortedOtherAdmins = remainingUsers
+    .filter(u => u.role === 'admin')
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+
+  const sortedOtherUsers = remainingUsers
+    .filter(u => u.role !== 'admin')
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
   return (
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col justify-between pb-20 md:pb-0">
@@ -699,8 +738,9 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  {/* FILTRI RIPRISTINATI: TUTTI, REGIONALE, NAZIONALE, REGOLAMENTO */}
                   <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-bold overflow-x-auto w-full sm:w-auto">
-                    {['Tutti', 'Regionale', 'Interregionale', 'Nazionale'].map((cat) => (
+                    {['Tutti', 'Regionale', 'Nazionale', 'Regolamento'].map((cat) => (
                       <button
                         key={cat}
                         onClick={() => setSelectedNewsCategory(cat)}
@@ -731,21 +771,35 @@ export default function FitaTaekwondoApp() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredNews.map((item) => (
-                    <div key={item.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm flex flex-col justify-between">
+                    <div key={item.id} className={`bg-white rounded-xl border overflow-hidden shadow-sm flex flex-col justify-between relative ${item.isPinned ? 'border-amber-400 ring-1 ring-amber-400/50' : 'border-slate-200'}`}>
                       <div>
                         {item.image && (
                           <div className="h-36 sm:h-44 bg-slate-100 overflow-hidden relative">
                             <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
-                            <span className="absolute top-2.5 left-2.5 bg-[#0B1B3D] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">
-                              {item.category}
-                            </span>
+                            <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                              <span className="bg-[#0B1B3D] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">
+                                {item.category}
+                              </span>
+                              {item.isPinned && (
+                                <span className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1">
+                                  <Pin className="w-3 h-3 fill-white" /> In Evidenza
+                                </span>
+                              )}
+                            </div>
                           </div>
                         )}
                         <div className="p-4 space-y-2.5">
                           {!item.image && (
-                            <span className="inline-block bg-[#0B1B3D] text-white text-[10px] font-bold px-2 py-0.5 rounded">
-                              {item.category}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-block bg-[#0B1B3D] text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                                {item.category}
+                              </span>
+                              {item.isPinned && (
+                                <span className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow inline-flex items-center gap-1">
+                                  <Pin className="w-3 h-3 fill-white" /> In Evidenza
+                                </span>
+                              )}
+                            </div>
                           )}
                           <h3 className="text-sm sm:text-base font-bold text-[#0B1B3D] leading-snug">{item.title}</h3>
                           <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-500 border-y border-slate-100 py-1.5">
@@ -757,7 +811,15 @@ export default function FitaTaekwondoApp() {
                       </div>
 
                       {user && user.role === 'admin' && (
-                        <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex justify-end">
+                        <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                          <button
+                            onClick={() => togglePinNews(item.id)}
+                            className={`text-xs font-bold flex items-center gap-1 ${item.isPinned ? 'text-amber-600' : 'text-slate-500 hover:text-amber-600'}`}
+                          >
+                            <Pin className={`w-3.5 h-3.5 ${item.isPinned ? 'fill-amber-600' : ''}`} />
+                            {item.isPinned ? 'Sblocca' : 'Fissa in Alto'}
+                          </button>
+
                           <button onClick={() => handleDeleteNews(item.id)} className="text-red-600 text-xs font-semibold flex items-center gap-1">
                             <Trash2 className="w-3.5 h-3.5" /> Elimina
                           </button>
@@ -1032,6 +1094,65 @@ export default function FitaTaekwondoApp() {
         </button>
       </div>
 
+      {/* --- MODALE PUBBLICAZIONE NUOVA NOTIZIA CON OPTION IN EVIDENZA --- */}
+      <AnimatePresence>
+        {isNewsModalOpen && user && user.role === 'admin' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+            <div className="w-full max-w-md bg-white rounded-xl border border-slate-200 p-5 shadow-2xl space-y-4 text-xs max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <h3 className="text-sm font-bold text-[#0B1B3D]">Pubblica Nuova Notizia</h3>
+                <button onClick={() => setIsNewsModalOpen(false)} className="text-slate-400"><X className="w-5 h-5" /></button>
+              </div>
+
+              <form onSubmit={handleSaveNews} className="space-y-3">
+                <div>
+                  <label className="block text-slate-600 font-bold mb-1">Titolo Notizia *</label>
+                  <input type="text" required placeholder="Es. Comunicato Gare" value={newsTitle} onChange={(e) => setNewsTitle(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-600 font-bold mb-1">Categoria</label>
+                    <select value={newsCategory} onChange={(e) => setNewsCategory(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800">
+                      <option value="Regionale">Regionale</option>
+                      <option value="Nazionale">Nazionale</option>
+                      <option value="Regolamento">Regolamento</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 font-bold mb-1">Luogo / Sede</label>
+                    <input type="text" placeholder="Es. PalaVesuvio" value={newsLocation} onChange={(e) => setNewsLocation(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 font-bold mb-1">Contenuto *</label>
+                  <textarea required rows={4} placeholder="Inserisci il testo completo..." value={newsContent} onChange={(e) => setNewsContent(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 font-bold mb-1">URL Immagine (Opzionale)</label>
+                  <input type="text" placeholder="https://..." value={newsImage} onChange={(e) => setNewsImage(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
+                </div>
+
+                <div className="pt-1">
+                  <label onClick={() => setNewsIsPinned(!newsIsPinned)} className="flex items-center gap-2 cursor-pointer font-bold text-amber-800 bg-amber-50 p-2 rounded border border-amber-200 select-none">
+                    {newsIsPinned ? <CheckSquare className="w-4 h-4 text-amber-600" /> : <Square className="w-4 h-4 text-amber-400" />}
+                    <span className="flex items-center gap-1">
+                      <Pin className="w-3.5 h-3.5 text-amber-600" /> Fissa la notizia al primo posto (In Evidenza)
+                    </span>
+                  </label>
+                </div>
+
+                <div className="flex justify-end pt-3 border-t">
+                  <button type="submit" className="px-4 py-2 rounded bg-[#0B1B3D] text-white font-bold">Pubblica</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* --- MODALE LOGIN / REGISTRAZIONE --- */}
       <AnimatePresence>
         {authModalOpen && (
@@ -1140,7 +1261,7 @@ export default function FitaTaekwondoApp() {
         )}
       </AnimatePresence>
 
-      {/* --- MODALE GESTIONE UTENTI ADMIN --- */}
+      {/* --- MODALE GESTIONE UTENTI ADMIN STRUTTURATO --- */}
       <AnimatePresence>
         {isAdminUsersModalOpen && user && user.role === 'admin' && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
@@ -1155,43 +1276,90 @@ export default function FitaTaekwondoApp() {
                 </button>
               </div>
 
-              <div className="space-y-3 text-xs">
-                {usersList.map((u) => {
-                  const isSelf = u.id === user.id;
-                  const uIsAdmin = u.role === 'admin';
-
-                  return (
-                    <div key={u.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-4 text-xs">
+                {/* 1. UTENTE ATTUALE IN USO */}
+                {activeUserInList && (
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block mb-1.5">
+                      Account In Uso
+                    </span>
+                    <div className="p-3 bg-emerald-50/60 rounded-lg border border-emerald-300 flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-slate-800">{u.firstName} {u.lastName}</span>
-                          {uIsAdmin ? (
+                          <span className="font-bold text-sm text-slate-800">{activeUserInList.firstName} {activeUserInList.lastName}</span>
+                          <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold text-[10px] border border-red-200 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-red-600" /> Admin
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{activeUserInList.email} • {activeUserInList.region}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SEPARATORE GRAFICO LEGGERO */}
+                <div className="relative py-1">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+                  <div className="relative flex justify-center text-[10px] uppercase font-bold text-slate-400">
+                    <span className="bg-white px-3">Altri Utenti Registrati</span>
+                  </div>
+                </div>
+
+                {/* 2. GLI ALTRI AMMINISTRATORI (IN ORDINE ALFABETICO) */}
+                {sortedOtherAdmins.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase text-slate-500">Amministratori</span>
+                    {sortedOtherAdmins.map((u) => (
+                      <div key={u.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-slate-800">{u.firstName} {u.lastName}</span>
                             <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold text-[10px] border border-red-200 flex items-center gap-1">
                               <ShieldCheck className="w-3 h-3 text-red-600" /> Admin
                             </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-bold text-[10px] border border-blue-200">
-                              Utente Arbitro
-                            </span>
-                          )}
-                          {isSelf && <span className="text-[10px] text-slate-400 font-semibold">(Tu)</span>}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{u.email} • {u.region}</p>
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{u.email} • {u.region}</p>
-                      </div>
 
-                      <div className="flex items-center gap-1.5 justify-end">
-                        {uIsAdmin ? (
+                        <div className="flex items-center gap-1.5 justify-end">
                           <button
                             onClick={() => handleDemoteToUser(u.id)}
-                            disabled={isSelf}
-                            className={`px-2.5 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition-colors ${
-                              isSelf ? 'opacity-40 cursor-not-allowed bg-slate-200 text-slate-500' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
-                            }`}
+                            className="px-2.5 py-1 rounded text-[11px] font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center gap-1 transition-colors"
                             title="Rendi un Utente Arbitro semplice"
                           >
                             <UserX className="w-3.5 h-3.5" /> Declassa
                           </button>
-                        ) : (
+
+                          <button
+                            onClick={() => handleDeleteUser(u.id)}
+                            className="p-1.5 rounded text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
+                            title="Elimina utente"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 3. RESTO DEGLI UTENTI (IN ORDINE ALFABETICO) */}
+                {sortedOtherUsers.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase text-slate-500">Utenti Arbitri</span>
+                    {sortedOtherUsers.map((u) => (
+                      <div key={u.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-slate-800">{u.firstName} {u.lastName}</span>
+                            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-bold text-[10px] border border-blue-200">
+                              Utente Arbitro
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{u.email} • {u.region}</p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 justify-end">
                           <button
                             onClick={() => handlePromoteToAdmin(u.id)}
                             className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 transition-colors shadow-sm"
@@ -1199,19 +1367,19 @@ export default function FitaTaekwondoApp() {
                           >
                             <UserCheck className="w-3.5 h-3.5" /> Promuovi Admin
                           </button>
-                        )}
 
-                        <button
-                          onClick={() => handleDeleteUser(u.id)}
-                          className="p-1.5 rounded text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
-                          title="Elimina utente"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          <button
+                            onClick={() => handleDeleteUser(u.id)}
+                            className="p-1.5 rounded text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
+                            title="Elimina utente"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
