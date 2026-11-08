@@ -481,6 +481,21 @@ export default function FitaTaekwondoApp() {
     setAuthModalOpen(false);
   }, [clerkLoaded, clerkUser]);
 
+  useEffect(() => {
+    if (!clerkLoaded || !clerkUser || clerkUser.publicMetadata.role === 'admin') return;
+
+    let active = true;
+    fetch('/api/admin/bootstrap', { method: 'POST', credentials: 'same-origin' })
+      .then(async response => {
+        if (response.ok && active) {
+          await clerkUser.reload();
+        }
+      })
+      .catch(() => {});
+
+    return () => { active = false; };
+  }, [clerkLoaded, clerkUser]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
