@@ -786,10 +786,6 @@ export default function FitaTaekwondoApp() {
             </div>
 
             <div className="flex items-center gap-4">
-              {user && isAccountAdmin && (
-
-              )}
-
               {user ? (
                 <div className="flex items-center gap-3">
                   <button onClick={openProfileModal} className="flex items-center gap-1 text-slate-200 hover:text-amber-400 font-semibold text-xs">
