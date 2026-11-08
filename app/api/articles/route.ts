@@ -88,6 +88,7 @@ export async function PUT(request: Request) {
     return Response.json({ error: 'Il contenuto supera il limite consentito.' }, { status: 413, headers: noStoreHeaders() });
   }
 
+  let stage = 'validazione richiesta';
   try {
     const payload = await request.json() as { sections?: unknown; etag?: string | null };
     const serialized = JSON.stringify(payload.sections);
@@ -95,11 +96,13 @@ export async function PUT(request: Request) {
       return Response.json({ error: 'Formato degli articoli non valido.' }, { status: 400, headers: noStoreHeaders() });
     }
 
+    stage = 'lettura archivio Blob';
     const current = await readArticles();
     if ((payload.etag ?? null) !== current.etag) {
       return Response.json(current, { status: 409, headers: noStoreHeaders() });
     }
 
+    stage = 'scrittura archivio Blob';
     try {
       const saved = await put(
         ARTICLES_PATH,
@@ -113,16 +116,19 @@ export async function PUT(request: Request) {
         },
       );
       return Response.json({ etag: saved.etag }, { headers: noStoreHeaders() });
-    } catch {
+    } catch (error) {
+      console.error('[articles] Blob write exception', error);
       const latest = await readArticles();
       if (latest.etag !== current.etag) {
         return Response.json(latest, { status: 409, headers: noStoreHeaders() });
       }
-      throw new Error('Unable to save shared articles');
+      console.error('[articles] Blob write failed without a concurrent ETag update');
+      throw error;
     }
-  } catch {
+  } catch (error) {
+    console.error(`[articles] save failed during ${stage}`, error);
     return Response.json(
-      { error: 'Impossibile salvare gli articoli condivisi.' },
+      { error: 'Impossibile salvare gli articoli condivisi.', stage },
       { status: 503, headers: noStoreHeaders() },
     );
   }
