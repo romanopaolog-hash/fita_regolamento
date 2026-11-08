@@ -1,4 +1,4 @@
-import { get, put } from '@vercel/blob';
+import { BlobPreconditionFailedError, get, head, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 
 const ARTICLES_PATH = 'fita-regolamento/articles.json';
@@ -102,6 +102,13 @@ export async function PUT(request: Request) {
       return Response.json(current, { status: 409, headers: noStoreHeaders() });
     }
 
+    stage = 'lettura metadati Blob';
+    const metadata = await head(ARTICLES_PATH, { access: 'private' });
+    if ((metadata?.etag ?? null) !== current.etag) {
+      const latest = await readArticles();
+      return Response.json(latest, { status: 409, headers: noStoreHeaders() });
+    }
+
     stage = 'scrittura archivio Blob';
     try {
       const saved = await put(
@@ -112,17 +119,16 @@ export async function PUT(request: Request) {
           allowOverwrite: true,
           contentType: 'application/json',
           cacheControlMaxAge: 60,
-          ...(current.etag ? { ifMatch: current.etag } : {}),
+          ...(metadata?.etag ? { ifMatch: metadata.etag } : {}),
         },
       );
       return Response.json({ etag: saved.etag }, { headers: noStoreHeaders() });
     } catch (error) {
-      console.error('[articles] Blob write exception', error);
-      const latest = await readArticles();
-      if (latest.etag !== current.etag) {
+      if (error instanceof BlobPreconditionFailedError) {
+        const latest = await readArticles();
         return Response.json(latest, { status: 409, headers: noStoreHeaders() });
       }
-      console.error('[articles] Blob write failed without a concurrent ETag update');
+      console.error('[articles] Blob write exception', error);
       throw error;
     }
   } catch (error) {
