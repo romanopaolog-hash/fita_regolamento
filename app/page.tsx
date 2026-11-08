@@ -435,7 +435,8 @@ export default function FitaTaekwondoApp() {
         }
         if (!response.ok) {
           const failure = await response.json().catch(() => null);
-          throw new Error(failure?.error || 'Non è stato possibile sincronizzare gli articoli.');
+          const details = failure?.stage ? ` (${failure.stage})` : '';
+          throw new Error(`${failure?.error || 'Non è stato possibile sincronizzare gli articoli.'}${details}`);
         }
 
         const result = await response.json();
