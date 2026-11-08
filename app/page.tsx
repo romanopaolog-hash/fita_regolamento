@@ -439,8 +439,9 @@ export default function FitaTaekwondoApp() {
         lastSyncedSectionsRef.current = serializedSections;
         localStorage.setItem('tkd_articles_synced_v1', 'true');
         localStorage.setItem('tkd_articles_last_synced_v1', serializedSections);
+        showToast('Articoli salvati nell’archivio condiviso.');
       } catch {
-        showToast('Sincronizzazione non riuscita. Controlla la chiave admin e riprova.');
+        showToast('Sincronizzazione non riuscita. Riprova; se continua, aggiorna la pagina.');
       }
     }, 350);
 
