@@ -95,6 +95,16 @@ export default function ProfileCenter() {
             {regionMessage && <p role="status" className="text-sm text-slate-600">{regionMessage}</p>}
           </form>
         </section>
+
+        {user.publicMetadata.role === 'admin' && (
+          <section aria-labelledby="user-management-title" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <h2 id="user-management-title" className="text-lg font-bold text-[#0B1B3D]">Gestione utenti</h2>
+            <p className="mt-1 text-sm text-slate-600">Gestisci gli account e assegna i ruoli dal pannello sicuro collegato a questo progetto.</p>
+            <a href="https://dashboard.clerk.com/" target="_blank" rel="noreferrer" className="mt-3 inline-flex rounded-lg bg-[#0B1B3D] px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">
+              Apri gestione utenti
+            </a>
+          </section>
+        )}
       </div>
     </main>
   );
