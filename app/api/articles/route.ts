@@ -1,5 +1,5 @@
-import { timingSafeEqual } from 'node:crypto';
 import { get, put } from '@vercel/blob';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 
 const ARTICLES_PATH = 'fita-regolamento/articles.json';
 const MAX_BODY_SIZE = 2_000_000;
@@ -39,16 +39,6 @@ function isValidSections(value: unknown): value is ArticleSection[] {
   );
 }
 
-function isAuthorizedAdmin(request: Request) {
-  const expected = process.env.ARTICLE_SYNC_ADMIN_KEY;
-  const supplied = request.headers.get('authorization')?.replace(/^Bearer\\s+/i, '');
-  if (!expected || !supplied) return false;
-
-  const expectedBytes = Buffer.from(expected);
-  const suppliedBytes = Buffer.from(supplied);
-  return expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes);
-}
-
 function noStoreHeaders() {
   return { 'Cache-Control': 'no-store, max-age=0' };
 }
@@ -65,14 +55,32 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  if (!isAuthorizedAdmin(request)) {
-    return Response.json({ error: 'Chiave amministratore non valida.' }, { status: 403, headers: noStoreHeaders() });
-  }
-
   const origin = request.headers.get('origin');
   const host = request.headers.get('host');
-  if (origin && host && new URL(origin).host !== host) {
+  if (!origin || !host) {
     return Response.json({ error: 'Richiesta non valida.' }, { status: 403, headers: noStoreHeaders() });
+  }
+  try {
+    if (new URL(origin).host !== host) {
+      return Response.json({ error: 'Richiesta non valida.' }, { status: 403, headers: noStoreHeaders() });
+    }
+  } catch {
+    return Response.json({ error: 'Richiesta non valida.' }, { status: 403, headers: noStoreHeaders() });
+  }
+
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: 'Accesso richiesto.' }, { status: 401, headers: noStoreHeaders() });
+  }
+
+  try {
+    const clerk = await clerkClient();
+    const admin = await clerk.users.getUser(userId);
+    if (admin.publicMetadata.role !== 'admin') {
+      return Response.json({ error: 'Permessi admin richiesti.' }, { status: 403, headers: noStoreHeaders() });
+    }
+  } catch {
+    return Response.json({ error: 'Impossibile verificare i permessi admin.' }, { status: 503, headers: noStoreHeaders() });
   }
 
   const contentLength = Number(request.headers.get('content-length') || 0);
