@@ -62,6 +62,7 @@ function parseBulkArticles(source: string) {
   blocks.forEach((block, index) => {
     const title = block.match(/^Titolo:\s*(.+)$/im)?.[1]?.trim();
     const tagLine = block.match(/^Tag:\s*(.*)$/im)?.[1] ?? '';
+    const articleSource = block.match(/^Fonte:\s*(.*)$/im)?.[1]?.trim() ?? '';
     const contentMatch = block.match(/^Testo:\s*\r?\n([\s\S]*?)\s*=== FINE ARTICOLO ===\s*$/im);
     const content = contentMatch?.[1]?.trim();
 
@@ -73,7 +74,7 @@ function parseBulkArticles(source: string) {
     articles.push({
       title,
       tags: tagLine.split(',').map(tag => tag.trim()).filter(Boolean),
-      source,
+      source: articleSource,
       content
     });
   });
@@ -270,6 +271,7 @@ export default function FitaTaekwondoApp() {
   const [newsList, setNewsList] = useState(DEFAULT_NEWS);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+  const [articleSort, setArticleSort] = useState<'default' | 'title-asc' | 'title-desc'>('default');
   const [selectedNewsCategory, setSelectedNewsCategory] = useState<string>('Tutti');
 
   const [activeSectionId, setActiveSectionId] = useState('home');
@@ -727,12 +729,17 @@ export default function FitaTaekwondoApp() {
     : [];
 
   const filteredSubsections = currentSection ? currentSection.subsections.filter(sub => {
+    const query = searchQuery.trim().toLocaleLowerCase('it');
     const matchesSearch =
-      sub.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sub.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (sub.tags && sub.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())));
+      sub.title.toLocaleLowerCase('it').includes(query) ||
+      sub.content.toLocaleLowerCase('it').includes(query) ||
+      (sub.tags && sub.tags.some(t => t.toLocaleLowerCase('it').includes(query)));
     const matchesFav = showOnlyFavorites ? favorites.includes(sub.id) : true;
     return matchesSearch && matchesFav;
+  }).sort((a, b) => {
+    if (articleSort === 'title-asc') return a.title.localeCompare(b.title, 'it', { sensitivity: 'base' });
+    if (articleSort === 'title-desc') return b.title.localeCompare(a.title, 'it', { sensitivity: 'base' });
+    return 0;
   }) : [];
 
   // NOTIZIE FILTRATE E ORDINATE (IN EVIDENZA PER PRIME)
@@ -844,18 +851,7 @@ export default function FitaTaekwondoApp() {
                   </div>
                 )}
               </div>
-              {activeSectionId !== 'home' && (
-                <button
-                  type="button"
-                  onClick={() => setShowOnlyFavorites(prev => !prev)}
-                  aria-pressed={showOnlyFavorites}
-                  title={showOnlyFavorites ? 'Mostra tutti gli articoli' : 'Mostra solo i preferiti'}
-                  className={`flex h-8 sm:h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2 sm:px-3 text-xs font-bold transition-colors ${showOnlyFavorites ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  <Star className={`h-4 w-4 ${showOnlyFavorites ? 'fill-amber-500 text-amber-500' : 'text-amber-500'}`} />
-                  <span className="hidden sm:inline">{showOnlyFavorites ? 'Preferiti' : 'Preferiti'}</span>
-                </button>
-              )}
+
 
               <button
                 onClick={toggleNotifications}
@@ -1043,8 +1039,19 @@ export default function FitaTaekwondoApp() {
               {activeTabMode === 'rules' && (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <span>{showOnlyFavorites ? 'Articoli preferiti' : 'Tutti gli articoli'}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => setShowOnlyFavorites(prev => !prev)} aria-pressed={showOnlyFavorites} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold ${showOnlyFavorites ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+                        <Star className={`h-4 w-4 ${showOnlyFavorites ? 'fill-amber-500 text-amber-500' : 'text-amber-500'}`} />
+                        {showOnlyFavorites ? 'Preferiti' : 'Tutti'}
+                      </button>
+                      <label className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>Ordina</span>
+                        <select value={articleSort} onChange={e => setArticleSort(e.target.value as typeof articleSort)} className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
+                          <option value="default">Originale</option>
+                          <option value="title-asc">Titolo A–Z</option>
+                          <option value="title-desc">Titolo Z–A</option>
+                        </select>
+                      </label>
                       {isSelectingArticles && <span className="font-semibold text-[#0B1B3D]">{selectedArticleIds.length} selezionati</span>}
                     </div>
 
