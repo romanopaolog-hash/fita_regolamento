@@ -12,13 +12,13 @@ type ArticleSection = {
 
 async function readArticles() {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const metadata = await head(ARTICLES_PATH, { access: 'private' });
+    const metadata = await head(ARTICLES_PATH);
     if (!metadata) return { sections: null, etag: null };
 
     const blob = await get(ARTICLES_PATH, { access: 'private', useCache: false });
     if (!blob) continue;
 
-    const latestMetadata = await head(ARTICLES_PATH, { access: 'private' });
+    const latestMetadata = await head(ARTICLES_PATH);
     if (metadata.etag !== blob.blob.etag || metadata.etag !== latestMetadata?.etag) continue;
 
     const text = await new Response(blob.stream).text();
@@ -113,7 +113,7 @@ export async function PUT(request: Request) {
     }
 
     stage = 'lettura metadati Blob';
-    const metadata = await head(ARTICLES_PATH, { access: 'private' });
+    const metadata = await head(ARTICLES_PATH);
     if ((metadata?.etag ?? null) !== current.etag) {
       const latest = await readArticles();
       return Response.json(latest, { status: 409, headers: noStoreHeaders() });
