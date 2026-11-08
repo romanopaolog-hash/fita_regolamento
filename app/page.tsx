@@ -195,7 +195,7 @@ const DEFAULT_SECTIONS = [
   }
 ];
 
-function mergeArticleSections(cloudSections: any[], deviceSections: any[], preferDevice = false) {
+function mergeArticleSections(cloudSections: any[], deviceSections: any[]) {
   const cloudById = new Map(cloudSections.map(section => [section.id, section]));
   const deviceById = new Map(deviceSections.map(section => [section.id, section]));
   const sectionIds = [...new Set([...cloudSections.map(section => section.id), ...deviceSections.map(section => section.id)])];
@@ -204,17 +204,58 @@ function mergeArticleSections(cloudSections: any[], deviceSections: any[], prefe
     const cloudSection = cloudById.get(id);
     const deviceSection = deviceById.get(id);
     const articleMap = new Map<string, any>();
-    const articleSources = preferDevice
-      ? [...(cloudSection?.subsections || []), ...(deviceSection?.subsections || [])]
-      : [...(deviceSection?.subsections || []), ...(cloudSection?.subsections || [])];
-
-    for (const article of articleSources) articleMap.set(article.id, article);
+    for (const article of [...(deviceSection?.subsections || []), ...(cloudSection?.subsections || [])]) {
+      articleMap.set(article.id, article);
+    }
 
     return {
       ...(deviceSection || {}),
       ...(cloudSection || {}),
       subsections: [...articleMap.values()],
       documents: cloudSection?.documents ?? deviceSection?.documents ?? []
+    };
+  });
+}
+
+function reconcileArticleSections(cloudSections: any[], deviceSections: any[], lastSyncedSections: any[]) {
+  const cloudById = new Map(cloudSections.map(section => [section.id, section]));
+  const deviceById = new Map(deviceSections.map(section => [section.id, section]));
+  const snapshotById = new Map(lastSyncedSections.map(section => [section.id, section]));
+  const sectionIds = [...new Set([...cloudSections.map(section => section.id), ...deviceSections.map(section => section.id)])];
+
+  return sectionIds.map(id => {
+    const cloudSection = cloudById.get(id);
+    const deviceSection = deviceById.get(id);
+    const snapshotSection = snapshotById.get(id);
+    if (!cloudSection || !deviceSection || !snapshotSection) {
+      return mergeArticleSections(cloudSection ? [cloudSection] : [], deviceSection ? [deviceSection] : [])[0];
+    }
+
+    const cloudArticles = new Map<string, any>((cloudSection.subsections || []).map((article: any) => [article.id, article]));
+    const deviceArticles = new Map<string, any>((deviceSection.subsections || []).map((article: any) => [article.id, article]));
+    const snapshotArticles = new Map<string, any>((snapshotSection.subsections || []).map((article: any) => [article.id, article]));
+
+    for (const [articleId, priorArticle] of snapshotArticles) {
+      const deviceArticle = deviceArticles.get(articleId);
+      const cloudArticle = cloudArticles.get(articleId);
+      if (!deviceArticle && cloudArticle && JSON.stringify(cloudArticle) === JSON.stringify(priorArticle)) {
+        cloudArticles.delete(articleId);
+      } else if (deviceArticle && JSON.stringify(deviceArticle) !== JSON.stringify(priorArticle)) {
+        cloudArticles.set(articleId, deviceArticle);
+      }
+    }
+    for (const [articleId, deviceArticle] of deviceArticles) {
+      if (!snapshotArticles.has(articleId)) cloudArticles.set(articleId, deviceArticle);
+    }
+
+    const documents = new Map<string, any>();
+    for (const document of [...(deviceSection.documents || []), ...(cloudSection.documents || [])]) documents.set(document.id, document);
+
+    return {
+      ...deviceSection,
+      ...cloudSection,
+      subsections: [...cloudArticles.values()],
+      documents: [...documents.values()]
     };
   });
 }
@@ -343,7 +384,14 @@ export default function FitaTaekwondoApp() {
       if (savedUser) { try { setUser(JSON.parse(savedUser)); } catch (e) {} }
     }
 
-    const alreadySynced = localStorage.getItem('tkd_articles_synced_v1') === 'true';
+    let lastSyncedSnapshot: any[] | null = null;
+    const savedSnapshot = localStorage.getItem('tkd_articles_last_synced_v1');
+    if (savedSnapshot) {
+      try {
+        const parsedSnapshot = JSON.parse(savedSnapshot);
+        if (Array.isArray(parsedSnapshot)) lastSyncedSnapshot = parsedSnapshot;
+      } catch {}
+    }
     fetch('/api/articles', { cache: 'no-store' })
       .then(async response => {
         if (!response.ok) throw new Error('Shared articles unavailable');
@@ -357,13 +405,16 @@ export default function FitaTaekwondoApp() {
         lastSyncedSectionsRef.current = cloudSections ? JSON.stringify(cloudSections) : null;
 
         const resolvedSections = cloudSections
-          ? (alreadySynced ? cloudSections : mergeArticleSections(cloudSections, deviceSections))
+          ? (lastSyncedSnapshot
+            ? reconcileArticleSections(cloudSections, deviceSections, lastSyncedSnapshot)
+            : mergeArticleSections(cloudSections, deviceSections))
           : deviceSections;
 
         setSections(resolvedSections);
         setIsSectionsLoaded(true);
         if (cloudSections && JSON.stringify(resolvedSections) === JSON.stringify(cloudSections)) {
           localStorage.setItem('tkd_articles_synced_v1', 'true');
+          localStorage.setItem('tkd_articles_last_synced_v1', JSON.stringify(cloudSections));
         }
       })
       .catch(() => {
@@ -403,7 +454,14 @@ export default function FitaTaekwondoApp() {
           const latest = await response.json();
           articleSyncEtagRef.current = latest.etag ?? null;
           lastSyncedSectionsRef.current = Array.isArray(latest.sections) ? JSON.stringify(latest.sections) : null;
-          if (Array.isArray(latest.sections)) setSections(mergeArticleSections(latest.sections, sections, true));
+          if (Array.isArray(latest.sections)) {
+            const savedSnapshot = localStorage.getItem('tkd_articles_last_synced_v1');
+            let priorSnapshot: any[] = [];
+            if (savedSnapshot) { try { priorSnapshot = JSON.parse(savedSnapshot); } catch {} }
+            setSections(priorSnapshot.length
+              ? reconcileArticleSections(latest.sections, sections, priorSnapshot)
+              : mergeArticleSections(latest.sections, sections));
+          }
           showToast('Ho unito gli aggiornamenti recenti. Attendi un istante per completare la sincronizzazione.');
           return;
         }
@@ -413,6 +471,7 @@ export default function FitaTaekwondoApp() {
         articleSyncEtagRef.current = result.etag ?? null;
         lastSyncedSectionsRef.current = serializedSections;
         localStorage.setItem('tkd_articles_synced_v1', 'true');
+        localStorage.setItem('tkd_articles_last_synced_v1', serializedSections);
       } catch {
         showToast('Sincronizzazione non riuscita. Controlla la chiave admin e riprova.');
       }
