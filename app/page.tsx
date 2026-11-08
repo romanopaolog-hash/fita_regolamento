@@ -10,12 +10,13 @@ import {
   Star,
   ChevronDown,
   Video,
+  Swords,
+  PersonStanding,
   Plus,
   Trash2,
   Edit3,
   X,
   Play,
-  Users,
   BookOpen,
   Sparkles,
   Upload,
@@ -432,7 +433,10 @@ export default function FitaTaekwondoApp() {
           showToast('Ho unito gli aggiornamenti recenti. Attendi un istante per completare la sincronizzazione.');
           return;
         }
-        if (!response.ok) throw new Error('Shared article save failed');
+        if (!response.ok) {
+          const failure = await response.json().catch(() => null);
+          throw new Error(failure?.error || 'Non è stato possibile sincronizzare gli articoli.');
+        }
 
         const result = await response.json();
         articleSyncEtagRef.current = result.etag ?? null;
@@ -440,8 +444,8 @@ export default function FitaTaekwondoApp() {
         localStorage.setItem('tkd_articles_synced_v1', 'true');
         localStorage.setItem('tkd_articles_last_synced_v1', serializedSections);
         showToast('Articoli salvati nell’archivio condiviso.');
-      } catch {
-        showToast('Sincronizzazione non riuscita. Riprova; se continua, aggiorna la pagina.');
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Sincronizzazione non riuscita. Riprova; se continua, aggiorna la pagina.');
       }
     }, 350);
 
@@ -765,16 +769,6 @@ export default function FitaTaekwondoApp() {
                     <span>{user.firstName} {user.lastName}</span>
                   </button>
 
-                  {user.role === 'admin' && (
-                    <a
-                      href="https://dashboard.clerk.com/"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#A60F2D] hover:bg-red-800 text-white text-[11px] font-bold shadow"
-                    >
-                      <Users className="w-3.5 h-3.5" /> Gestione account
-                    </a>
-                  )}
 
                   <button onClick={handleLogout} className="text-slate-400 hover:text-white p-1" title="Logout">
                     <LogOut className="w-3.5 h-3.5" />
@@ -1454,47 +1448,57 @@ export default function FitaTaekwondoApp() {
       </footer>
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0B1B3D] text-slate-300 border-t border-slate-800 z-40 px-2 py-1.5 flex items-center justify-around shadow-2xl">
+      <nav aria-label="Navigazione principale" className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0B1B3D] text-slate-300 border-t border-slate-800 z-40 px-1 py-1.5 flex items-stretch shadow-2xl">
         <button
+          type="button"
+          aria-label="Home"
           onClick={() => setActiveSectionId('home')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg transition-colors ${
-            activeSectionId === 'home' ? 'text-amber-400 font-bold' : 'text-slate-400'
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg py-1 transition-colors ${
+            activeSectionId === 'home' ? 'text-amber-400 font-bold' : 'text-slate-300'
           }`}
         >
-          <HomeIcon className="w-5 h-5" />
-          <span className="text-[10px]">News</span>
+          <HomeIcon className="h-5 w-5" />
+          <span className="whitespace-nowrap text-[10px] leading-tight font-semibold">Home</span>
         </button>
 
-        {sections.map((sec) => (
-          <button
-            key={sec.id}
-            onClick={() => { setActiveSectionId(sec.id); setActiveTabMode('rules'); }}
-            className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg transition-colors ${
-              activeSectionId === sec.id ? 'text-amber-400 font-bold' : 'text-slate-400'
-            }`}
-          >
-            <BookOpen className="w-5 h-5" />
-            <span className="text-[10px]">{sec.shortTitle}</span>
-          </button>
-        ))}
+        {sections.map((sec) => {
+          const mobileNav = {
+            kyorugi: { label: 'Combatt.', Icon: Swords },
+            'video-replay': { label: 'VR', Icon: Video },
+            poomsae: { label: 'Forme', Icon: PersonStanding },
+            freestyle: { label: 'Freestyle', Icon: Sparkles },
+          }[sec.id] || { label: sec.shortTitle || sec.title, Icon: BookOpen };
+          const Icon = mobileNav.Icon;
+
+          return (
+            <button
+              key={sec.id}
+              type="button"
+              aria-label={sec.title}
+              title={sec.title}
+              onClick={() => { setActiveSectionId(sec.id); setActiveTabMode('rules'); }}
+              className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg py-1 transition-colors ${
+                activeSectionId === sec.id ? 'text-amber-400 font-bold' : 'text-slate-300'
+              }`}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="whitespace-nowrap text-[10px] leading-tight font-semibold">{mobileNav.label}</span>
+            </button>
+          );
+        })}
 
         <button
-          onClick={() => {
-            if (user) {
-              openProfilePage();
-            } else {
-              setAuthMode('login');
-              setAuthModalOpen(true);
-            }
-          }}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg transition-colors ${
-            user ? 'text-emerald-400 font-bold' : 'text-slate-400'
+          type="button"
+          aria-label={user ? 'Area personale' : 'Accedi'}
+          onClick={() => user ? openProfilePage() : (setAuthMode('login'), setAuthModalOpen(true))}
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg py-1 transition-colors ${
+            user ? 'text-emerald-300 font-bold' : 'text-slate-300'
           }`}
         >
-          <User className="w-5 h-5" />
-          <span className="text-[10px]">{user ? user.firstName : 'Accedi'}</span>
+          <User className="h-5 w-5" />
+          <span className="whitespace-nowrap text-[10px] leading-tight font-semibold">{user ? 'Profilo' : 'Accedi'}</span>
         </button>
-      </div>
+      </nav>
 
       {/* --- MODALE PUBBLICAZIONE NUOVA NOTIZIA CON OPTION IN EVIDENZA --- */}
       <AnimatePresence>
