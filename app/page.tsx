@@ -284,6 +284,8 @@ export default function FitaTaekwondoApp() {
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({});
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
+  const [adminMode, setAdminMode] = useState(true);
+
   const [user, setUser] = useState<{
     id: string;
     firstName: string;
@@ -635,7 +637,7 @@ export default function FitaTaekwondoApp() {
 
   const handleBulkImport = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || user.role !== 'admin') return;
+    if (!user || user.role !== 'admin' || !adminMode) return;
 
     const { articles, errors } = parseBulkArticles(bulkImportText);
     if (errors.length > 0) {
@@ -692,7 +694,7 @@ export default function FitaTaekwondoApp() {
   };
 
   const handleDeleteSelectedArticles = () => {
-    if (!user || user.role !== 'admin' || selectedArticleIds.length === 0) return;
+    if (!user || user.role !== 'admin' || !adminMode || selectedArticleIds.length === 0) return;
     if (!confirm(`Eliminare definitivamente ${selectedArticleIds.length} articoli selezionati?`)) return;
 
     const deletedIds = new Set(selectedArticleIds);
@@ -778,6 +780,16 @@ export default function FitaTaekwondoApp() {
             <div className="flex items-center gap-4">
               {user ? (
                 <div className="flex items-center gap-3">
+                  {user.role === 'admin' && (
+                    <button
+                      type="button"
+                      onClick={() => setAdminMode(mode => !mode)}
+                      aria-pressed={adminMode}
+                      className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${adminMode ? 'border-amber-400/60 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20' : 'border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
+                    >
+                      Modalità {adminMode ? 'admin' : 'utente'}
+                    </button>
+                  )}
                   <button onClick={openProfilePage} className="flex items-center gap-1 text-slate-200 hover:text-amber-400 font-semibold text-xs">
                     <Settings className="w-3.5 h-3.5 text-amber-400" />
                     <span>{user.firstName} {user.lastName}</span>
@@ -925,7 +937,7 @@ export default function FitaTaekwondoApp() {
                     ))}
                   </div>
 
-                  {user && user.role === 'admin' && (
+                  {user && user.role === 'admin' && adminMode && (
                     <button
                       onClick={() => setIsNewsModalOpen(true)}
                       className="w-full sm:w-auto inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-[#0B1B3D] text-white font-bold text-xs"
@@ -982,7 +994,7 @@ export default function FitaTaekwondoApp() {
                         </div>
                       </div>
 
-                      {user && user.role === 'admin' && (
+                      {user && user.role === 'admin' && adminMode && (
                         <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
                           <button
                             onClick={() => togglePinNews(item.id)}
@@ -1055,7 +1067,7 @@ export default function FitaTaekwondoApp() {
                       {isSelectingArticles && <span className="font-semibold text-[#0B1B3D]">{selectedArticleIds.length} selezionati</span>}
                     </div>
 
-                    {user && user.role === 'admin' && (
+                    {user && user.role === 'admin' && adminMode && (
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => {
@@ -1118,7 +1130,7 @@ export default function FitaTaekwondoApp() {
                             className="p-3.5 sm:p-5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 select-none"
                           >
                             <div className="flex items-center gap-2.5">
-                              {user && user.role === 'admin' && isSelectingArticles && (
+                              {user && user.role === 'admin' && adminMode && isSelectingArticles && (
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); toggleArticleSelection(sub.id); }}
@@ -1156,7 +1168,7 @@ export default function FitaTaekwondoApp() {
                               </button>
 
 
-                              {user && user.role === 'admin' && (
+                              {user && user.role === 'admin' && adminMode && (
                                 <div className="flex items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
                                   <button onClick={() => handleEditClick(sub, currentSection.id)} className="p-1 text-blue-600">
                                     <Edit3 className="w-3.5 h-3.5" />
@@ -1224,7 +1236,7 @@ export default function FitaTaekwondoApp() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-bold text-[#0B1B3D] uppercase">Documenti Didattici</h3>
-                    {user && user.role === 'admin' && (
+                    {user && user.role === 'admin' && adminMode && (
                       <button onClick={() => setIsDocModalOpen(true)} className="px-3 py-1 rounded-lg bg-[#0B1B3D] text-white font-bold text-xs">
                         + Carica File
                       </button>
@@ -1272,7 +1284,7 @@ export default function FitaTaekwondoApp() {
 
       {/* --- MODALE IMPORTAZIONE RAPIDA ARTICOLI (SOLO ADMIN) --- */}
       <AnimatePresence>
-        {isQuickImportModalOpen && user && user.role === 'admin' && (
+        {isQuickImportModalOpen && user && user.role === 'admin' && adminMode && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/80 backdrop-blur-sm">
             <div className="w-full max-w-4xl bg-white rounded-xl border border-slate-200 shadow-2xl max-h-[92vh] overflow-y-auto">
               <div className="sticky top-0 z-10 bg-white flex items-center justify-between p-4 sm:p-5 border-b border-slate-200">
@@ -1392,7 +1404,7 @@ export default function FitaTaekwondoApp() {
 
       {/* --- MODALE CREAZIONE / MODIFICA ARTICOLO --- */}
       <AnimatePresence>
-        {isEditingModalOpen && user && user.role === 'admin' && (
+        {isEditingModalOpen && user && user.role === 'admin' && adminMode && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
             <div className="w-full max-w-2xl bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -1527,7 +1539,7 @@ export default function FitaTaekwondoApp() {
 
       {/* --- MODALE PUBBLICAZIONE NUOVA NOTIZIA CON OPTION IN EVIDENZA --- */}
       <AnimatePresence>
-        {isNewsModalOpen && user && user.role === 'admin' && (
+        {isNewsModalOpen && user && user.role === 'admin' && adminMode && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
             <div className="w-full max-w-md bg-white rounded-xl border border-slate-200 p-5 shadow-2xl space-y-4 text-xs max-h-[85vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
