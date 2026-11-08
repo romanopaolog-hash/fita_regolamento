@@ -39,6 +39,47 @@ import {
   Pin
 } from 'lucide-react';
 
+const BULK_ARTICLE_TEMPLATE = `=== ARTICOLO ===
+Titolo: Titolo dell'articolo
+Tag: tag1, tag2
+Testo:
+Testo completo dell'articolo.
+=== FINE ARTICOLO ===`;
+
+const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regolamento. Usa solo informazioni presenti nel materiale, conserva numeri, condizioni ed eccezioni, non inventare contenuti. Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
+
+${BULK_ARTICLE_TEMPLATE}`;
+
+function parseBulkArticles(source: string) {
+  const blocks = source.split(/^=== ARTICOLO ===\s*$/im).slice(1);
+  const articles: { title: string; tags: string[]; content: string }[] = [];
+  const errors: string[] = [];
+
+  if (blocks.length === 0 && source.trim()) {
+    return { articles, errors: ['Non trovo blocchi. Usa il marcatore === ARTICOLO === per ogni articolo.'] };
+  }
+
+  blocks.forEach((block, index) => {
+    const title = block.match(/^Titolo:\s*(.+)$/im)?.[1]?.trim();
+    const tagLine = block.match(/^Tag:\s*(.*)$/im)?.[1] ?? '';
+    const contentMatch = block.match(/^Testo:\s*\r?\n([\s\S]*?)\s*=== FINE ARTICOLO ===\s*$/im);
+    const content = contentMatch?.[1]?.trim();
+
+    if (!title || !content) {
+      errors.push(`Articolo ${index + 1}: manca il Titolo, il Testo o il marcatore === FINE ARTICOLO ===.`);
+      return;
+    }
+
+    articles.push({
+      title,
+      tags: tagLine.split(',').map(tag => tag.trim()).filter(Boolean),
+      content
+    });
+  });
+
+  return { articles, errors };
+}
+
 // --- DATI DI DEFAULT ---
 const DEFAULT_NEWS = [
   {
@@ -221,6 +262,9 @@ export default function FitaTaekwondoApp() {
   const [formMediaUrl, setFormMediaUrl] = useState('');
   const [formMediaType, setFormMediaType] = useState<'image' | 'video'>('image');
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [isQuickImportModalOpen, setIsQuickImportModalOpen] = useState(false);
+  const [bulkImportText, setBulkImportText] = useState('');
+  const [bulkImportSectionId, setBulkImportSectionId] = useState('kyorugi');
 
   const [newsTitle, setNewsTitle] = useState('');
   const [newsCategory, setNewsCategory] = useState('Regionale');
@@ -536,6 +580,46 @@ export default function FitaTaekwondoApp() {
     );
     setIsEditingModalOpen(false);
     showToast(editingSubsection ? 'Articolo aggiornato!' : 'Nuovo articolo salvato!');
+  };
+
+  const handleBulkImport = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || user.role !== 'admin') return;
+
+    const { articles, errors } = parseBulkArticles(bulkImportText);
+    if (errors.length > 0) {
+      showToast(errors[0]);
+      return;
+    }
+    if (articles.length === 0) {
+      showToast('Incolla almeno un articolo valido prima di importarli.');
+      return;
+    }
+
+    const targetSection = sections.find(section => section.id === bulkImportSectionId);
+    if (!targetSection) {
+      showToast('Seleziona una sezione del regolamento valida.');
+      return;
+    }
+
+    const importedSubsections = articles.map((article, index) => ({
+      id: `sub_bulk_${Date.now()}_${index}`,
+      title: article.title,
+      content: article.content,
+      tags: article.tags,
+      media: []
+    }));
+
+    setSections(prev => prev.map(section =>
+      section.id === bulkImportSectionId
+        ? { ...section, subsections: [...section.subsections, ...importedSubsections] }
+        : section
+    ));
+    setActiveSectionId(bulkImportSectionId);
+    setActiveTabMode('rules');
+    setIsQuickImportModalOpen(false);
+    setBulkImportText('');
+    showToast(`Importati ${importedSubsections.length} articoli in "${targetSection.title}".`);
   };
 
   const handleEditClick = (sub: any, sectionId: string) => {
@@ -878,18 +962,29 @@ export default function FitaTaekwondoApp() {
                     </button>
 
                     {user && user.role === 'admin' && (
-                      <button
-                        onClick={() => {
-                          setEditingSubsection(null);
-                          setFormSectionId(currentSection.id);
-                          setFormTitle(''); setFormContent(''); setFormTags(''); setFormMediaUrl('');
-                          setSelectedFileName(null);
-                          setIsEditingModalOpen(true);
-                        }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0B1B3D] text-white font-bold text-xs"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Articolo
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingSubsection(null);
+                            setFormSectionId(currentSection.id);
+                            setFormTitle(''); setFormContent(''); setFormTags(''); setFormMediaUrl('');
+                            setSelectedFileName(null);
+                            setIsEditingModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0B1B3D] text-white font-bold text-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Articolo
+                        </button>
+                        <button
+                          onClick={() => {
+                            setBulkImportSectionId(currentSection.id);
+                            setIsQuickImportModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold text-xs hover:bg-emerald-800"
+                        >
+                          <Upload className="w-3.5 h-3.5" /> Importa più articoli
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -1042,6 +1137,126 @@ export default function FitaTaekwondoApp() {
           )}
         </main>
       </div>
+
+      {/* --- MODALE IMPORTAZIONE RAPIDA ARTICOLI (SOLO ADMIN) --- */}
+      <AnimatePresence>
+        {isQuickImportModalOpen && user && user.role === 'admin' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/80 backdrop-blur-sm">
+            <div className="w-full max-w-4xl bg-white rounded-xl border border-slate-200 shadow-2xl max-h-[92vh] overflow-y-auto">
+              <div className="sticky top-0 z-10 bg-white flex items-center justify-between p-4 sm:p-5 border-b border-slate-200">
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-[#0B1B3D]">Importazione rapida articoli</h3>
+                  <p className="text-xs text-slate-500 mt-1">Incolla il testo generato dall’AI, controlla un’anteprima e importa gli articoli.</p>
+                </div>
+                <button type="button" onClick={() => setIsQuickImportModalOpen(false)} className="text-slate-400 hover:text-slate-600" aria-label="Chiudi">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 sm:p-5">
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <h4 className="font-bold text-[#0B1B3D]">Istruzioni da dare all’AI</h4>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(BULK_ARTICLE_PROMPT);
+                            showToast('Istruzioni copiate. Incollale nella chat AI insieme al materiale.');
+                          } catch {
+                            showToast('Copia non disponibile: seleziona e copia le istruzioni qui sotto.');
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded bg-white border border-blue-200 text-blue-800 font-bold hover:bg-blue-100"
+                      >
+                        Copia istruzioni
+                      </button>
+                    </div>
+                    <p className="text-slate-600 mb-2">Copia queste istruzioni nella chat AI insieme al PDF o al PowerPoint, poi incolla la risposta nel campo accanto.</p>
+                    <textarea
+                      readOnly
+                      value={BULK_ARTICLE_PROMPT}
+                      rows={8}
+                      onFocus={(e) => e.currentTarget.select()}
+                      className="w-full resize-y rounded border border-blue-200 bg-white p-2 font-mono text-[10px] leading-relaxed text-slate-700"
+                      aria-label="Formato e istruzioni per l’AI"
+                    />
+                  </div>
+
+                  <label htmlFor="bulk-import-section" className="block font-bold text-slate-600">Inserisci gli articoli in</label>
+                  <select
+                    id="bulk-import-section"
+                    value={bulkImportSectionId}
+                    onChange={(e) => setBulkImportSectionId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800"
+                  >
+                    {sections.map(section => <option key={section.id} value={section.id}>{section.title}</option>)}
+                  </select>
+
+                  <label htmlFor="bulk-import-text" className="block font-bold text-slate-600">Risposta dell’AI</label>
+                  <textarea
+                    id="bulk-import-text"
+                    value={bulkImportText}
+                    onChange={(e) => setBulkImportText(e.target.value)}
+                    placeholder={BULK_ARTICLE_TEMPLATE}
+                    rows={14}
+                    className="w-full bg-slate-50 border border-slate-300 p-3 rounded-lg font-mono text-xs text-slate-800 focus:outline-none focus:border-[#0B1B3D]"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-[#0B1B3D]">Anteprima</h4>
+                    <span className="px-2 py-1 rounded bg-slate-100 text-slate-600 font-semibold">
+                      {parseBulkArticles(bulkImportText).articles.length} articoli validi
+                    </span>
+                  </div>
+
+                  {parseBulkArticles(bulkImportText).errors.length > 0 && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 space-y-1" role="status">
+                      {parseBulkArticles(bulkImportText).errors.map((error, index) => <p key={index}>{error}</p>)}
+                      <p className="font-semibold">Correggi il testo: l’importazione avviene solo se tutti i blocchi sono validi.</p>
+                    </div>
+                  )}
+
+                  {parseBulkArticles(bulkImportText).articles.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-slate-500">
+                      L’anteprima degli articoli apparirà qui dopo aver incollato il testo.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
+                      {parseBulkArticles(bulkImportText).articles.map((article, index) => (
+                        <div key={index} className="rounded-lg border border-slate-200 p-3">
+                          <div className="flex items-start gap-2">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 font-bold">{index + 1}</span>
+                            <div className="min-w-0">
+                              <h5 className="font-bold text-slate-800">{article.title}</h5>
+                              {article.tags.length > 0 && <p className="mt-1 text-[10px] text-slate-500">Tag: {article.tags.join(', ')}</p>}
+                              <p className="mt-2 whitespace-pre-line text-slate-600">{article.content.length > 280 ? `${article.content.slice(0, 280)}…` : article.content}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <form onSubmit={handleBulkImport} className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white p-4 sm:px-5">
+                <button type="button" onClick={() => setIsQuickImportModalOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 font-bold">Annulla</button>
+                <button
+                  type="submit"
+                  disabled={!bulkImportText.trim() || parseBulkArticles(bulkImportText).articles.length === 0 || parseBulkArticles(bulkImportText).errors.length > 0}
+                  className="px-4 py-2 rounded-lg bg-emerald-700 text-white font-bold hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Importa {parseBulkArticles(bulkImportText).articles.length} articoli
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* --- MODALE CREAZIONE / MODIFICA ARTICOLO --- */}
       <AnimatePresence>
