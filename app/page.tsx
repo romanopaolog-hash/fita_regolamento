@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -195,6 +195,30 @@ const DEFAULT_SECTIONS = [
   }
 ];
 
+function mergeArticleSections(cloudSections: any[], deviceSections: any[], preferDevice = false) {
+  const cloudById = new Map(cloudSections.map(section => [section.id, section]));
+  const deviceById = new Map(deviceSections.map(section => [section.id, section]));
+  const sectionIds = [...new Set([...cloudSections.map(section => section.id), ...deviceSections.map(section => section.id)])];
+
+  return sectionIds.map(id => {
+    const cloudSection = cloudById.get(id);
+    const deviceSection = deviceById.get(id);
+    const articleMap = new Map<string, any>();
+    const articleSources = preferDevice
+      ? [...(cloudSection?.subsections || []), ...(deviceSection?.subsections || [])]
+      : [...(deviceSection?.subsections || []), ...(cloudSection?.subsections || [])];
+
+    for (const article of articleSources) articleMap.set(article.id, article);
+
+    return {
+      ...(deviceSection || {}),
+      ...(cloudSection || {}),
+      subsections: [...articleMap.values()],
+      documents: cloudSection?.documents ?? deviceSection?.documents ?? []
+    };
+  });
+}
+
 // UTENTI DI DEFAULT (Con l'account Admin principale protetto)
 const DEFAULT_USERS = [
   { id: 'u0', firstName: 'Admin', lastName: 'Admin', email: 'admin@taekwondo.it', password: 'admin', role: 'admin' as const, region: 'Nazionale' },
@@ -204,6 +228,12 @@ const DEFAULT_USERS = [
 
 export default function FitaTaekwondoApp() {
   const [sections, setSections] = useState(DEFAULT_SECTIONS);
+  const [isSectionsLoaded, setIsSectionsLoaded] = useState(false);
+  const [articleSyncKey, setArticleSyncKey] = useState('');
+  const [articleSyncKeyInput, setArticleSyncKeyInput] = useState('');
+  const articleSyncEtagRef = useRef<string | null>(null);
+  const lastSyncedSectionsRef = useRef<string | null>(null);
+  const articleSyncAvailableRef = useRef(false);
   const [newsList, setNewsList] = useState(DEFAULT_NEWS);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
@@ -285,8 +315,21 @@ export default function FitaTaekwondoApp() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
+    let deviceSections = DEFAULT_SECTIONS;
     const savedSecs = localStorage.getItem('tkd_sections');
-    if (savedSecs) { try { setSections(JSON.parse(savedSecs)); } catch (e) {} }
+    if (savedSecs) {
+      try {
+        const parsed = JSON.parse(savedSecs);
+        if (Array.isArray(parsed)) deviceSections = parsed;
+      } catch {}
+    }
+    setSections(deviceSections);
+
+    const savedSyncKey = localStorage.getItem('tkd_article_sync_key') || '';
+    setArticleSyncKey(savedSyncKey);
+    setArticleSyncKeyInput(savedSyncKey);
+
     const savedNews = localStorage.getItem('tkd_news');
     if (savedNews) { try { setNewsList(JSON.parse(savedNews)); } catch (e) {} }
     const savedFavs = localStorage.getItem('tkd_favorites');
@@ -299,9 +342,84 @@ export default function FitaTaekwondoApp() {
       const savedUser = localStorage.getItem('tkd_current_user');
       if (savedUser) { try { setUser(JSON.parse(savedUser)); } catch (e) {} }
     }
+
+    const alreadySynced = localStorage.getItem('tkd_articles_synced_v1') === 'true';
+    fetch('/api/articles', { cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Shared articles unavailable');
+        return response.json();
+      })
+      .then((result: { sections?: any[] | null; etag?: string | null }) => {
+        if (!active) return;
+        articleSyncAvailableRef.current = true;
+        articleSyncEtagRef.current = result.etag ?? null;
+        const cloudSections = Array.isArray(result.sections) ? result.sections : null;
+        lastSyncedSectionsRef.current = cloudSections ? JSON.stringify(cloudSections) : null;
+
+        const resolvedSections = cloudSections
+          ? (alreadySynced ? cloudSections : mergeArticleSections(cloudSections, deviceSections))
+          : deviceSections;
+
+        setSections(resolvedSections);
+        setIsSectionsLoaded(true);
+        if (cloudSections && JSON.stringify(resolvedSections) === JSON.stringify(cloudSections)) {
+          localStorage.setItem('tkd_articles_synced_v1', 'true');
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        articleSyncAvailableRef.current = false;
+        setSections(deviceSections);
+        setIsSectionsLoaded(true);
+        showToast('Archivio condiviso non raggiungibile: gli articoli restano salvati su questo dispositivo.');
+      });
+
+    return () => { active = false; };
   }, []);
 
-  useEffect(() => { localStorage.setItem('tkd_sections', JSON.stringify(sections)); }, [sections]);
+  useEffect(() => {
+    if (!isSectionsLoaded) return;
+    const serializedSections = JSON.stringify(sections);
+    localStorage.setItem('tkd_sections', serializedSections);
+
+    if (!articleSyncAvailableRef.current || user?.role !== 'admin' || !articleSyncKey) return;
+    if (serializedSections === lastSyncedSectionsRef.current) {
+      localStorage.setItem('tkd_articles_synced_v1', 'true');
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch('/api/articles', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${articleSyncKey}`
+          },
+          body: JSON.stringify({ sections, etag: articleSyncEtagRef.current })
+        });
+
+        if (response.status === 409) {
+          const latest = await response.json();
+          articleSyncEtagRef.current = latest.etag ?? null;
+          lastSyncedSectionsRef.current = Array.isArray(latest.sections) ? JSON.stringify(latest.sections) : null;
+          if (Array.isArray(latest.sections)) setSections(mergeArticleSections(latest.sections, sections, true));
+          showToast('Ho unito gli aggiornamenti recenti. Attendi un istante per completare la sincronizzazione.');
+          return;
+        }
+        if (!response.ok) throw new Error('Shared article save failed');
+
+        const result = await response.json();
+        articleSyncEtagRef.current = result.etag ?? null;
+        lastSyncedSectionsRef.current = serializedSections;
+        localStorage.setItem('tkd_articles_synced_v1', 'true');
+      } catch {
+        showToast('Sincronizzazione non riuscita. Controlla la chiave admin e riprova.');
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [sections, isSectionsLoaded, user?.role, articleSyncKey]);
   useEffect(() => { localStorage.setItem('tkd_news', JSON.stringify(newsList)); }, [newsList]);
   useEffect(() => { localStorage.setItem('tkd_favorites', JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem('tkd_users_list', JSON.stringify(usersList)); }, [usersList]);
@@ -504,6 +622,19 @@ export default function FitaTaekwondoApp() {
       setDocUrl(URL.createObjectURL(file));
       setDocFormat(file.name.split('.').pop()?.toUpperCase() || 'PDF');
     }
+  };
+
+  const handleSaveArticleSyncKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (user?.role !== 'admin') return;
+    const key = articleSyncKeyInput.trim();
+    if (!key) {
+      showToast('Inserisci la chiave admin condivisa.');
+      return;
+    }
+    localStorage.setItem('tkd_article_sync_key', key);
+    setArticleSyncKey(key);
+    showToast('Chiave salvata su questo dispositivo.');
   };
 
   const handleSaveNews = (e: React.FormEvent) => {
@@ -1077,6 +1208,30 @@ export default function FitaTaekwondoApp() {
                       </div>
                     )}
                   </div>
+
+                  {user && user.role === 'admin' && (
+                    <details className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <summary className="cursor-pointer text-xs font-bold text-slate-700">
+                        Sincronizzazione condivisa {articleSyncKey ? '· collegata su questo dispositivo' : '· richiede la chiave admin'}
+                      </summary>
+                      <form onSubmit={handleSaveArticleSyncKey} className="mt-3 flex flex-col sm:flex-row gap-2">
+                        <label htmlFor="article-sync-key" className="sr-only">Chiave amministratore per la sincronizzazione</label>
+                        <input
+                          id="article-sync-key"
+                          type="password"
+                          autoComplete="new-password"
+                          value={articleSyncKeyInput}
+                          onChange={(e) => setArticleSyncKeyInput(e.target.value)}
+                          placeholder="Incolla qui la chiave admin condivisa"
+                          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-800"
+                        />
+                        <button type="submit" className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-xs font-bold text-white">
+                          Salva chiave
+                        </button>
+                      </form>
+                      <p className="mt-2 text-[10px] text-slate-500">La chiave viene salvata solo in questo browser; inseriscila una volta per ogni dispositivo admin.</p>
+                    </details>
+                  )}
 
                   {filteredSubsections.length === 0 ? (
                     <div className="bg-white p-8 text-center rounded-xl border border-slate-200 text-xs text-slate-500 font-semibold">
