@@ -39,14 +39,14 @@ import {
 } from 'lucide-react';
 
 const BULK_ARTICLE_TEMPLATE = `=== ARTICOLO ===
-Titolo: Titolo dell'articolo
+Titolo: Argomento dell'articolo, senza numerazione
 Tag: tag1, tag2
 Fonte: regolamento, documento o articolo di riferimento (facoltativo)
 Testo:
 Testo completo dell'articolo.
 === FINE ARTICOLO ===`;
 
-const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regolamento. Usa solo informazioni presenti nel materiale, conserva numeri, condizioni ed eccezioni, non inventare contenuti. Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
+const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regolamento. Usa solo informazioni presenti nel materiale, conserva numeri, condizioni ed eccezioni, non inventare contenuti. Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. Il campo Titolo deve contenere solo l'argomento specifico: non inserire numeri o diciture come “Articolo 1”, “Articolo 2” o “Articolo 1 - ...”. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
 
 ${BULK_ARTICLE_TEMPLATE}`;
 
