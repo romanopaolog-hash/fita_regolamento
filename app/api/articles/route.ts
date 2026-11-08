@@ -1,4 +1,4 @@
-import { get, put } from '@vercel/blob';
+import { BlobPreconditionFailedError, get, head, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 
 const ARTICLES_PATH = 'fita-regolamento/articles.json';
@@ -11,14 +11,24 @@ type ArticleSection = {
 };
 
 async function readArticles() {
-  const blob = await get(ARTICLES_PATH, { access: 'private', useCache: false });
-  if (!blob) return { sections: null, etag: null };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const metadata = await head(ARTICLES_PATH);
+    if (!metadata) return { sections: null, etag: null };
 
-  const text = await new Response(blob.stream).text();
-  const data = JSON.parse(text) as { sections?: ArticleSection[] };
-  if (!Array.isArray(data.sections)) throw new Error('Invalid shared article data');
+    const blob = await get(ARTICLES_PATH, { access: 'private', useCache: false });
+    if (!blob) continue;
 
-  return { sections: data.sections, etag: blob.blob.etag };
+    const latestMetadata = await head(ARTICLES_PATH);
+    if (metadata.etag !== blob.blob.etag || metadata.etag !== latestMetadata?.etag) continue;
+
+    const text = await new Response(blob.stream).text();
+    const data = JSON.parse(text) as { sections?: ArticleSection[] };
+    if (!Array.isArray(data.sections)) throw new Error('Invalid shared article data');
+
+    return { sections: data.sections, etag: metadata.etag };
+  }
+
+  throw new Error('Shared article archive changed while reading');
 }
 
 function isValidSections(value: unknown): value is ArticleSection[] {
@@ -102,6 +112,13 @@ export async function PUT(request: Request) {
       return Response.json(current, { status: 409, headers: noStoreHeaders() });
     }
 
+    stage = 'lettura metadati Blob';
+    const metadata = await head(ARTICLES_PATH);
+    if ((metadata?.etag ?? null) !== current.etag) {
+      const latest = await readArticles();
+      return Response.json(latest, { status: 409, headers: noStoreHeaders() });
+    }
+
     stage = 'scrittura archivio Blob';
     try {
       const saved = await put(
@@ -112,17 +129,16 @@ export async function PUT(request: Request) {
           allowOverwrite: true,
           contentType: 'application/json',
           cacheControlMaxAge: 60,
-          ...(current.etag ? { ifMatch: current.etag } : {}),
+          ...(metadata?.etag ? { ifMatch: metadata.etag } : {}),
         },
       );
       return Response.json({ etag: saved.etag }, { headers: noStoreHeaders() });
     } catch (error) {
-      console.error('[articles] Blob write exception', error);
-      const latest = await readArticles();
-      if (latest.etag !== current.etag) {
+      if (error instanceof BlobPreconditionFailedError) {
+        const latest = await readArticles();
         return Response.json(latest, { status: 409, headers: noStoreHeaders() });
       }
-      console.error('[articles] Blob write failed without a concurrent ETag update');
+      console.error('[articles] Blob write exception', error);
       throw error;
     }
   } catch (error) {
