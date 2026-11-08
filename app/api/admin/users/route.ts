@@ -35,10 +35,10 @@ async function countAdmins(clerk: Awaited<ReturnType<typeof clerkClient>>) {
   let count = 0;
 
   while (true) {
-    const users = await clerk.users.getUserList({ limit: 100, offset });
-    count += users.filter(user => user.publicMetadata.role === 'admin').length;
-    if (users.length < 100) return count;
-    offset += users.length;
+    const page = await clerk.users.getUserList({ limit: 100, offset });
+    count += page.data.filter(user => user.publicMetadata.role === 'admin').length;
+    if (page.data.length < 100) return count;
+    offset += page.data.length;
   }
 }
 
@@ -67,14 +67,14 @@ export async function GET(request: Request) {
   const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
 
   try {
-    const users = await access.clerk.users.getUserList({
+    const page = await access.clerk.users.getUserList({
       limit: PAGE_SIZE,
       offset,
       orderBy: '-created_at',
     });
     return Response.json({
-      users: users.map(publicUser),
-      nextOffset: users.length === PAGE_SIZE ? offset + users.length : null,
+      users: page.data.map(publicUser),
+      nextOffset: page.data.length === PAGE_SIZE ? offset + page.data.length : null,
     }, { headers: noStore });
   } catch {
     return Response.json({ error: 'Impossibile caricare gli utenti.' }, { status: 503, headers: noStore });
