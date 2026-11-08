@@ -1043,6 +1043,75 @@ export default function FitaTaekwondoApp() {
         </main>
       </div>
 
+      {/* --- MODALE CREAZIONE / MODIFICA ARTICOLO --- */}
+      <AnimatePresence>
+        {isEditingModalOpen && user && user.role === 'admin' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+            <div className="w-full max-w-2xl bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div>
+                  <h3 className="text-base font-bold text-[#0B1B3D]">
+                    {editingSubsection ? 'Modifica Articolo' : 'Nuovo Articolo'}
+                  </h3>
+                  <p className="text-slate-500 mt-0.5">Inserisci o aggiorna il contenuto del regolamento.</p>
+                </div>
+                <button type="button" onClick={() => setIsEditingModalOpen(false)} className="text-slate-400 hover:text-slate-600" aria-label="Chiudi">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveSubsection} className="space-y-3">
+                <div>
+                  <label htmlFor="article-title" className="block text-slate-600 font-bold mb-1">Titolo *</label>
+                  <input id="article-title" type="text" required value={formTitle} onChange={(e) => setFormTitle(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 focus:outline-none focus:border-[#0B1B3D]" />
+                </div>
+
+                <div>
+                  <label htmlFor="article-content" className="block text-slate-600 font-bold mb-1">Contenuto *</label>
+                  <textarea id="article-content" required rows={9} value={formContent} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
+                </div>
+
+                <div>
+                  <label htmlFor="article-tags" className="block text-slate-600 font-bold mb-1">Tag <span className="font-normal text-slate-400">(separati da virgola)</span></label>
+                  <input id="article-tags" type="text" value={formTags} onChange={(e) => setFormTags(e.target.value)} placeholder="es. Arbitraggio, Punteggi" className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 focus:outline-none focus:border-[#0B1B3D]" />
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <label className="block text-slate-600 font-bold">Media allegato <span className="font-normal text-slate-400">(facoltativo)</span></label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setMediaSourceType('file')} className={`px-3 py-1.5 rounded-md font-bold ${mediaSourceType === 'file' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>
+                      Carica file
+                    </button>
+                    <button type="button" onClick={() => setMediaSourceType('url')} className={`px-3 py-1.5 rounded-md font-bold ${mediaSourceType === 'url' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>
+                      Inserisci URL
+                    </button>
+                  </div>
+                  {mediaSourceType === 'file' ? (
+                    <input type="file" accept="image/*,video/*" onChange={handleFileUpload} className="block w-full text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:font-semibold" />
+                  ) : (
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input type="url" value={formMediaUrl} onChange={(e) => setFormMediaUrl(e.target.value)} placeholder="https://..." className="flex-1 bg-slate-50 border border-slate-300 p-2 rounded-lg text-slate-800" />
+                      <select value={formMediaType} onChange={(e) => setFormMediaType(e.target.value as 'image' | 'video')} className="bg-slate-50 border border-slate-300 p-2 rounded-lg text-slate-800">
+                        <option value="image">Immagine</option>
+                        <option value="video">Video</option>
+                      </select>
+                    </div>
+                  )}
+                  {selectedFileName && <p className="text-slate-500">File selezionato: {selectedFileName}</p>}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                  <button type="button" onClick={() => setIsEditingModalOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 font-bold">Annulla</button>
+                  <button type="submit" className="px-4 py-2 rounded-lg bg-[#0B1B3D] text-white font-bold hover:bg-slate-800">
+                    {editingSubsection ? 'Salva modifiche' : 'Salva articolo'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* FOOTER */}
       <footer className="hidden md:block bg-[#0B1B3D] text-slate-400 text-xs py-6 border-t border-slate-800 w-full mt-auto">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
