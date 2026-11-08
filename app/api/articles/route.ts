@@ -18,7 +18,8 @@ async function readArticles() {
   const data = JSON.parse(text) as { sections?: ArticleSection[] };
   if (!Array.isArray(data.sections)) throw new Error('Invalid shared article data');
 
-  return { sections: data.sections, etag: blob.blob.etag, url: blob.blob.url };
+  const metadata = await head(blob.blob.url);
+  return { sections: data.sections, etag: metadata.etag, url: blob.blob.url };
 }
 
 function isValidSections(value: unknown): value is ArticleSection[] {
