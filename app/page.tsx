@@ -1170,7 +1170,7 @@ export default function FitaTaekwondoApp() {
                                 {sub.content}
                               </div>
 
-                              {sub.source?.trim() && (
+                              {(sub as any).source?.trim() && (
                                 <p className="mt-3 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
                                   <span className="font-semibold text-slate-600">Fonte / riferimento:</span> {sub.source}
                                 </p>
