@@ -261,8 +261,6 @@ function reconcileArticleSections(cloudSections: any[], deviceSections: any[], l
 export default function FitaTaekwondoApp() {
   const [sections, setSections] = useState(DEFAULT_SECTIONS);
   const [isSectionsLoaded, setIsSectionsLoaded] = useState(false);
-  const [articleSyncKey, setArticleSyncKey] = useState('');
-  const [articleSyncKeyInput, setArticleSyncKeyInput] = useState('');
   const articleSyncEtagRef = useRef<string | null>(null);
   const lastSyncedSectionsRef = useRef<string | null>(null);
   const articleSyncAvailableRef = useRef(false);
@@ -342,9 +340,8 @@ export default function FitaTaekwondoApp() {
     }
     setSections(deviceSections);
 
-    const savedSyncKey = localStorage.getItem('tkd_article_sync_key') || '';
-    setArticleSyncKey(savedSyncKey);
-    setArticleSyncKeyInput(savedSyncKey);
+    // Remove the old per-device secret; admin access is checked by Clerk on the server.
+    localStorage.removeItem('tkd_article_sync_key');
 
     const savedNews = localStorage.getItem('tkd_news');
     if (savedNews) { try { setNewsList(JSON.parse(savedNews)); } catch (e) {} }
@@ -404,7 +401,7 @@ export default function FitaTaekwondoApp() {
     const serializedSections = JSON.stringify(sections);
     localStorage.setItem('tkd_sections', serializedSections);
 
-    if (!articleSyncAvailableRef.current || user?.role !== 'admin' || !articleSyncKey) return;
+    if (!articleSyncAvailableRef.current || user?.role !== 'admin') return;
     if (serializedSections === lastSyncedSectionsRef.current) {
       localStorage.setItem('tkd_articles_synced_v1', 'true');
       return;
@@ -415,8 +412,7 @@ export default function FitaTaekwondoApp() {
         const response = await fetch('/api/articles', {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${articleSyncKey}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({ sections, etag: articleSyncEtagRef.current })
         });
@@ -449,7 +445,7 @@ export default function FitaTaekwondoApp() {
     }, 350);
 
     return () => window.clearTimeout(timer);
-  }, [sections, isSectionsLoaded, user?.role, articleSyncKey]);
+  }, [sections, isSectionsLoaded, user?.role]);
   useEffect(() => { localStorage.setItem('tkd_news', JSON.stringify(newsList)); }, [newsList]);
   useEffect(() => { localStorage.setItem('tkd_favorites', JSON.stringify(favorites)); }, [favorites]);
   const isAccountAdmin = user?.role === 'admin';
@@ -544,19 +540,6 @@ export default function FitaTaekwondoApp() {
       setDocUrl(URL.createObjectURL(file));
       setDocFormat(file.name.split('.').pop()?.toUpperCase() || 'PDF');
     }
-  };
-
-  const handleSaveArticleSyncKey = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (user?.role !== 'admin') return;
-    const key = articleSyncKeyInput.trim();
-    if (!key) {
-      showToast('Inserisci la chiave admin condivisa.');
-      return;
-    }
-    localStorage.setItem('tkd_article_sync_key', key);
-    setArticleSyncKey(key);
-    showToast('Chiave salvata su questo dispositivo.');
   };
 
   const handleSaveNews = (e: React.FormEvent) => {
@@ -1109,30 +1092,6 @@ export default function FitaTaekwondoApp() {
                       </div>
                     )}
                   </div>
-
-                  {user && user.role === 'admin' && (
-                    <details className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                      <summary className="cursor-pointer text-xs font-bold text-slate-700">
-                        Sincronizzazione condivisa {articleSyncKey ? '· collegata su questo dispositivo' : '· richiede la chiave admin'}
-                      </summary>
-                      <form onSubmit={handleSaveArticleSyncKey} className="mt-3 flex flex-col sm:flex-row gap-2">
-                        <label htmlFor="article-sync-key" className="sr-only">Chiave amministratore per la sincronizzazione</label>
-                        <input
-                          id="article-sync-key"
-                          type="password"
-                          autoComplete="new-password"
-                          value={articleSyncKeyInput}
-                          onChange={(e) => setArticleSyncKeyInput(e.target.value)}
-                          placeholder="Incolla qui la chiave admin condivisa"
-                          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-800"
-                        />
-                        <button type="submit" className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-xs font-bold text-white">
-                          Salva chiave
-                        </button>
-                      </form>
-                      <p className="mt-2 text-[10px] text-slate-500">La chiave viene salvata solo in questo browser; inseriscila una volta per ogni dispositivo admin.</p>
-                    </details>
-                  )}
 
                   {filteredSubsections.length === 0 ? (
                     <div className="bg-white p-8 text-center rounded-xl border border-slate-200 text-xs text-slate-500 font-semibold">
