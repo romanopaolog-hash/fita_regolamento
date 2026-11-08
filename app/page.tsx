@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { SignIn, SignUp, UserProfile, useClerk, useUser } from '@clerk/nextjs';
+import { SignIn, SignUp, useClerk, useUser } from '@clerk/nextjs';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -295,12 +295,6 @@ export default function FitaTaekwondoApp() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [profileTabMode, setProfileTabMode] = useState<'dati' | 'sicurezza'>('dati');
-  const [editFirstName, setEditFirstName] = useState('');
-  const [editLastName, setEditLastName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
-  const [editRegion, setEditRegion] = useState('');
 
   const [activeVideoModal, setActiveVideoModal] = useState<{ url: string; caption: string; title: string } | null>(null);
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
@@ -523,36 +517,15 @@ export default function FitaTaekwondoApp() {
     showToast('Stato evidenza notizia aggiornato!');
   };
 
-  const openProfileModal = () => {
+  const openProfilePage = () => {
     if (!user) return;
-    setEditFirstName(user.firstName || '');
-    setEditLastName(user.lastName || '');
-    setEditEmail(user.email || '');
-    setEditRegion(user.region || 'Campania');
-    setProfileTabMode('dati');
-    setIsProfileModalOpen(true);
+    window.location.assign('/profilo');
   };
 
   const handleLogout = async () => {
     await signOut();
     setUser(null);
     showToast('Logout effettuato');
-  };
-
-  const handleSaveProfileData = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clerkUser) return;
-
-    try {
-      await clerkUser.update({
-        firstName: editFirstName.trim(),
-        lastName: editLastName.trim(),
-        unsafeMetadata: { ...clerkUser.unsafeMetadata, region: editRegion },
-      });
-      showToast('Profilo aggiornato!');
-    } catch {
-      showToast('Non è stato possibile aggiornare il profilo.');
-    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -803,7 +776,7 @@ export default function FitaTaekwondoApp() {
             <div className="flex items-center gap-4">
               {user ? (
                 <div className="flex items-center gap-3">
-                  <button onClick={openProfileModal} className="flex items-center gap-1 text-slate-200 hover:text-amber-400 font-semibold text-xs">
+                  <button onClick={openProfilePage} className="flex items-center gap-1 text-slate-200 hover:text-amber-400 font-semibold text-xs">
                     <Settings className="w-3.5 h-3.5 text-amber-400" />
                     <span>{user.firstName} {user.lastName}</span>
                   </button>
@@ -1548,7 +1521,7 @@ export default function FitaTaekwondoApp() {
         <button
           onClick={() => {
             if (user) {
-              openProfileModal();
+              openProfilePage();
             } else {
               setAuthMode('login');
               setAuthModalOpen(true);
@@ -1638,69 +1611,6 @@ export default function FitaTaekwondoApp() {
                 <SignUp routing="hash" signInUrl="/sign-in" />
               )}
               <p className="mt-3 text-center text-[10px] text-slate-500">Il recupero password invia un codice all’email verificata.</p>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* PROFILO MODAL */}
-      <AnimatePresence>
-        {isProfileModalOpen && user && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-white rounded-t-2xl sm:rounded-xl border border-slate-200 p-5 shadow-2xl space-y-4 text-xs max-h-[85vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-full bg-[#0B1B3D] text-white font-bold flex items-center justify-center text-xs">
-                    {user.firstName?.[0]}{user.lastName?.[0]}
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-[#0B1B3D]">{user.firstName} {user.lastName}</h3>
-                    <p className="text-[10px] text-slate-500">{user.email} • {user.region}</p>
-                  </div>
-                </div>
-                <button onClick={() => setIsProfileModalOpen(false)} className="text-slate-400"><X className="w-5 h-5" /></button>
-              </div>
-
-              <div className="flex bg-slate-100 p-1 rounded-lg font-bold">
-                <button onClick={() => setProfileTabMode('dati')} className={`flex-1 py-1.5 rounded-md text-center text-xs ${profileTabMode === 'dati' ? 'bg-[#0B1B3D] text-white' : 'text-slate-600'}`}>
-                  Dati Personali
-                </button>
-                <button onClick={() => setProfileTabMode('sicurezza')} className={`flex-1 py-1.5 rounded-md text-center text-xs ${profileTabMode === 'sicurezza' ? 'bg-[#0B1B3D] text-white' : 'text-slate-600'}`}>
-                  Password
-                </button>
-              </div>
-
-              {profileTabMode === 'dati' && (
-                <form onSubmit={handleSaveProfileData} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-slate-600 font-bold mb-1">Nome</label>
-                      <input type="text" required value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                    </div>
-                    <div>
-                      <label className="block text-slate-600 font-bold mb-1">Cognome</label>
-                      <input type="text" required value={editLastName} onChange={(e) => setEditLastName(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-slate-600 font-bold mb-1">Email</label>
-                    <input type="email" value={editEmail} readOnly className="w-full bg-slate-100 border p-2 rounded text-slate-500" />
-                    <p className="mt-1 text-[10px] text-slate-500">Per aggiornare l’email usa le impostazioni sicure dell’account.</p>
-                  </div>
-                  <div className="flex justify-between items-center pt-3 border-t">
-                    <button type="button" onClick={handleLogout} className="text-red-600 font-bold text-xs flex items-center gap-1">
-                      <LogOut className="w-4 h-4" /> Esci dall'account
-                    </button>
-                    <button type="submit" className="px-4 py-2 rounded bg-[#0B1B3D] text-white font-bold">Salva</button>
-                  </div>
-                </form>
-              )}
-
-              {profileTabMode === 'sicurezza' && (
-                <div className="max-h-[65vh] overflow-y-auto">
-                  <UserProfile routing="hash" />
-                </div>
-              )}
             </div>
           </div>
         )}
