@@ -41,6 +41,7 @@ import {
 const BULK_ARTICLE_TEMPLATE = `=== ARTICOLO ===
 Titolo: Titolo dell'articolo
 Tag: tag1, tag2
+Fonte: regolamento, documento o articolo di riferimento (facoltativo)
 Testo:
 Testo completo dell'articolo.
 === FINE ARTICOLO ===`;
@@ -51,7 +52,7 @@ ${BULK_ARTICLE_TEMPLATE}`;
 
 function parseBulkArticles(source: string) {
   const blocks = source.split(/^=== ARTICOLO ===\s*$/im).slice(1);
-  const articles: { title: string; tags: string[]; content: string }[] = [];
+  const articles: { title: string; tags: string[]; source: string; content: string }[] = [];
   const errors: string[] = [];
 
   if (blocks.length === 0 && source.trim()) {
@@ -72,6 +73,7 @@ function parseBulkArticles(source: string) {
     articles.push({
       title,
       tags: tagLine.split(',').map(tag => tag.trim()).filter(Boolean),
+      source,
       content
     });
   });
@@ -306,6 +308,7 @@ export default function FitaTaekwondoApp() {
   const [formTitle, setFormTitle] = useState('');
   const [formContent, setFormContent] = useState('');
   const [formTags, setFormTags] = useState('');
+  const [formSource, setFormSource] = useState('');
   const [mediaSourceType, setMediaSourceType] = useState<'url' | 'file'>('file');
   const [formMediaUrl, setFormMediaUrl] = useState('');
   const [formMediaType, setFormMediaType] = useState<'image' | 'video'>('image');
@@ -608,6 +611,7 @@ export default function FitaTaekwondoApp() {
       id: editingSubsection ? editingSubsection.id : 'sub_' + Date.now(),
       title: formTitle,
       content: formContent,
+      source: formSource.trim(),
       tags: formTags.split(',').map(t => t.trim()).filter(Boolean),
       media: formMediaUrl ? [{ type: formMediaType, url: formMediaUrl, caption: selectedFileName ? `File: ${selectedFileName}` : 'Allegato' }] : []
     };
@@ -652,6 +656,7 @@ export default function FitaTaekwondoApp() {
       title: article.title,
       content: article.content,
       tags: article.tags,
+      source: article.source,
       media: []
     }));
 
@@ -673,6 +678,7 @@ export default function FitaTaekwondoApp() {
     setFormTitle(sub.title);
     setFormContent(sub.content);
     setFormTags(sub.tags ? sub.tags.join(', ') : '');
+    setFormSource(sub.source ?? '');
     setFormMediaUrl(sub.media && sub.media[0] ? sub.media[0].url : '');
     setFormMediaType(sub.media && sub.media[0] ? sub.media[0].type : 'image');
     setSelectedFileName(null);
@@ -1048,7 +1054,7 @@ export default function FitaTaekwondoApp() {
                           onClick={() => {
                             setEditingSubsection(null);
                             setFormSectionId(currentSection.id);
-                            setFormTitle(''); setFormContent(''); setFormTags(''); setFormMediaUrl('');
+                            setFormTitle(''); setFormContent(''); setFormTags(''); setFormSource(''); setFormMediaUrl('');
                             setSelectedFileName(null);
                             setIsEditingModalOpen(true);
                           }}
@@ -1163,6 +1169,12 @@ export default function FitaTaekwondoApp() {
                               <div className="whitespace-pre-line text-xs sm:text-sm text-slate-800">
                                 {sub.content}
                               </div>
+
+                              {sub.source?.trim() && (
+                                <p className="mt-3 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
+                                  <span className="font-semibold text-slate-600">Fonte / riferimento:</span> {sub.source}
+                                </p>
+                              )}
 
                               {sub.media && sub.media.length > 0 && (
                                 <div className="mt-4 pt-3 border-t border-slate-200">
@@ -1397,6 +1409,11 @@ export default function FitaTaekwondoApp() {
                 <div>
                   <label htmlFor="article-content" className="block text-slate-600 font-bold mb-1">Contenuto *</label>
                   <textarea id="article-content" required rows={9} value={formContent} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
+                </div>
+
+                <div>
+                  <label htmlFor="article-source" className="block text-slate-600 font-bold mb-1">Fonte originale / riferimento <span className="font-normal text-slate-400">(facoltativo)</span></label>
+                  <input id="article-source" type="text" value={formSource} onChange={(e) => setFormSource(e.target.value)} placeholder="es. WT Competition Rules 2026, art. 12" className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 focus:outline-none focus:border-[#0B1B3D]" />
                 </div>
 
                 <div>
