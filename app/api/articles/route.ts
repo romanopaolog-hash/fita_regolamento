@@ -1,8 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { get, put } from '@vercel/blob';
 
-export const runtime = 'nodejs';
-
 const ARTICLES_PATH = 'fita-regolamento/articles.json';
 const MAX_BODY_SIZE = 2_000_000;
 
@@ -43,7 +41,7 @@ function isValidSections(value: unknown): value is ArticleSection[] {
 
 function isAuthorizedAdmin(request: Request) {
   const expected = process.env.ARTICLE_SYNC_ADMIN_KEY;
-  const supplied = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  const supplied = request.headers.get('authorization')?.replace(/^Bearer\\s+/i, '');
   if (!expected || !supplied) return false;
 
   const expectedBytes = Buffer.from(expected);
