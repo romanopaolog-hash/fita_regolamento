@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { SignIn, SignUp, UserProfile, useClerk, useUser } from '@clerk/nextjs';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -16,7 +17,6 @@ import {
   Play,
   Users,
   BookOpen,
-  RefreshCw,
   Sparkles,
   Upload,
   Link as LinkIcon,
@@ -34,8 +34,6 @@ import {
   CheckSquare,
   Square,
   ShieldCheck,
-  UserCheck,
-  UserX,
   Pin
 } from 'lucide-react';
 
@@ -260,13 +258,6 @@ function reconcileArticleSections(cloudSections: any[], deviceSections: any[], l
   });
 }
 
-// UTENTI DI DEFAULT (Con l'account Admin principale protetto)
-const DEFAULT_USERS = [
-  { id: 'u0', firstName: 'Admin', lastName: 'Admin', email: 'admin@taekwondo.it', password: 'admin', role: 'admin' as const, region: 'Nazionale' },
-  { id: 'u1', firstName: 'Paolo', lastName: 'Romano', email: 'paolo.romano@taekwondo.it', password: 'admin', role: 'admin' as const, region: 'Campania' },
-  { id: 'u2', firstName: 'Marco', lastName: 'Rossi', email: 'marco.arbitro@fita.it', password: 'user', role: 'user' as const, region: 'Lazio' }
-];
-
 export default function FitaTaekwondoApp() {
   const [sections, setSections] = useState(DEFAULT_SECTIONS);
   const [isSectionsLoaded, setIsSectionsLoaded] = useState(false);
@@ -299,16 +290,10 @@ export default function FitaTaekwondoApp() {
     region: string;
   } | null>(null);
 
-  const [rememberMe, setRememberMe] = useState(false);
-  const [usersList, setUsersList] = useState(DEFAULT_USERS);
+  const { isLoaded: clerkLoaded, user: clerkUser } = useUser();
+  const { signOut } = useClerk();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authFirstName, setAuthFirstName] = useState('');
-  const [authLastName, setAuthLastName] = useState('');
-  const [authRegion, setAuthRegion] = useState('Campania');
 
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileTabMode, setProfileTabMode] = useState<'dati' | 'sicurezza'>('dati');
@@ -316,13 +301,9 @@ export default function FitaTaekwondoApp() {
   const [editLastName, setEditLastName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editRegion, setEditRegion] = useState('');
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   const [activeVideoModal, setActiveVideoModal] = useState<{ url: string; caption: string; title: string } | null>(null);
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
-  const [isAdminUsersModalOpen, setIsAdminUsersModalOpen] = useState(false);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
 
@@ -375,14 +356,10 @@ export default function FitaTaekwondoApp() {
     if (savedNews) { try { setNewsList(JSON.parse(savedNews)); } catch (e) {} }
     const savedFavs = localStorage.getItem('tkd_favorites');
     if (savedFavs) { try { setFavorites(JSON.parse(savedFavs)); } catch (e) {} }
-    const savedUsersList = localStorage.getItem('tkd_users_list');
-    if (savedUsersList) { try { setUsersList(JSON.parse(savedUsersList)); } catch (e) {} }
-
-    const isRemembered = localStorage.getItem('tkd_remember_me') === 'true';
-    if (isRemembered) {
-      const savedUser = localStorage.getItem('tkd_current_user');
-      if (savedUser) { try { setUser(JSON.parse(savedUser)); } catch (e) {} }
-    }
+    // Remove the legacy browser-only accounts and plaintext passwords during the Clerk migration.
+    localStorage.removeItem('tkd_users_list');
+    localStorage.removeItem('tkd_remember_me');
+    localStorage.removeItem('tkd_current_user');
 
     let lastSyncedSnapshot: any[] | null = null;
     const savedSnapshot = localStorage.getItem('tkd_articles_last_synced_v1');
@@ -481,14 +458,28 @@ export default function FitaTaekwondoApp() {
   }, [sections, isSectionsLoaded, user?.role, articleSyncKey]);
   useEffect(() => { localStorage.setItem('tkd_news', JSON.stringify(newsList)); }, [newsList]);
   useEffect(() => { localStorage.setItem('tkd_favorites', JSON.stringify(favorites)); }, [favorites]);
-  useEffect(() => { localStorage.setItem('tkd_users_list', JSON.stringify(usersList)); }, [usersList]);
+  const isAccountAdmin = user?.role === 'admin';
 
-  const accountRecord = user ? usersList.find(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase()) : null;
-  const isAccountAdmin = accountRecord?.role === 'admin' || user?.role === 'admin';
+  useEffect(() => {
+    if (!clerkLoaded) return;
+    if (!clerkUser) {
+      setUser(null);
+      setAuthModalOpen(false);
+      return;
+    }
 
-  const isMainAdminAccount = (u: { email: string; firstName: string; lastName: string }) => {
-    return u.email.toLowerCase() === 'admin@taekwondo.it' || (u.firstName === 'Admin' && u.lastName === 'Admin');
-  };
+    const email = clerkUser.primaryEmailAddress?.emailAddress || clerkUser.emailAddresses[0]?.emailAddress || '';
+    const region = typeof clerkUser.unsafeMetadata?.region === 'string' ? clerkUser.unsafeMetadata.region : 'Campania';
+    setUser({
+      id: clerkUser.id,
+      firstName: clerkUser.firstName || '',
+      lastName: clerkUser.lastName || '',
+      email,
+      role: clerkUser.publicMetadata.role === 'admin' ? 'admin' : 'user',
+      region,
+    });
+    setAuthModalOpen(false);
+  }, [clerkLoaded, clerkUser]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -512,115 +503,6 @@ export default function FitaTaekwondoApp() {
     setOpenAccordions(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const toggleUserRole = () => {
-    if (!user || !isAccountAdmin) return;
-    const newRole = user.role === 'admin' ? 'user' : 'admin';
-    const updatedUser = { ...user, role: newRole as 'user' | 'admin' };
-    setUser(updatedUser);
-    
-    if (rememberMe) {
-      localStorage.setItem('tkd_current_user', JSON.stringify(updatedUser));
-    }
-    showToast(`Vista cambiata in: ${newRole.toUpperCase()}`);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('tkd_remember_me');
-    localStorage.removeItem('tkd_current_user');
-    showToast('Logout effettuato');
-  };
-
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanEmail = authEmail.trim().toLowerCase();
-    const existing = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-
-    if (existing) {
-      if (existing.password && existing.password !== authPassword) {
-        alert('Password errata. Riprova.');
-        return;
-      }
-      setUser(existing);
-      if (rememberMe) {
-        localStorage.setItem('tkd_remember_me', 'true');
-        localStorage.setItem('tkd_current_user', JSON.stringify(existing));
-      } else {
-        localStorage.removeItem('tkd_remember_me');
-        localStorage.removeItem('tkd_current_user');
-      }
-      setAuthModalOpen(false);
-      setAuthEmail('');
-      setAuthPassword('');
-      showToast(`Bentornato/a ${existing.firstName}!`);
-    } else {
-      alert('Utente non trovato. Effettua la registrazione.');
-    }
-  };
-
-  const handleRegisterSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!authFirstName.trim() || !authLastName.trim() || !authEmail.trim() || !authPassword.trim()) {
-      alert('Compilare tutti i campi obbligatori.');
-      return;
-    }
-
-    const newUserObj = {
-      id: 'u_' + Date.now(),
-      firstName: authFirstName.trim(),
-      lastName: authLastName.trim(),
-      email: authEmail.trim(),
-      password: authPassword,
-      role: 'user' as const,
-      region: authRegion
-    };
-
-    setUser(newUserObj);
-    setUsersList([newUserObj, ...usersList]);
-    if (rememberMe) {
-      localStorage.setItem('tkd_remember_me', 'true');
-      localStorage.setItem('tkd_current_user', JSON.stringify(newUserObj));
-    }
-    setAuthModalOpen(false);
-    showToast(`Registrazione completata! Benvenuto/a ${authFirstName}`);
-    setAuthFirstName(''); setAuthLastName(''); setAuthEmail(''); setAuthPassword('');
-  };
-
-  const handlePromoteToAdmin = (targetId: string) => {
-    setUsersList(prev => prev.map(u => u.id === targetId ? { ...u, role: 'admin' } : u));
-    if (user && user.id === targetId) {
-      setUser({ ...user, role: 'admin' });
-    }
-    showToast('Utente promosso ad Amministratore');
-  };
-
-  const handleDemoteToUser = (targetId: string) => {
-    const target = usersList.find(u => u.id === targetId);
-    if (target && isMainAdminAccount(target)) {
-      alert('L account Amministratore Principale non può essere declassificato.');
-      return;
-    }
-    setUsersList(prev => prev.map(u => u.id === targetId ? { ...u, role: 'user' } : u));
-    if (user && user.id === targetId) {
-      setUser({ ...user, role: 'user' });
-    }
-    showToast('Utente convertito in Utente Arbitro');
-  };
-
-  const handleDeleteUser = (targetId: string) => {
-    const target = usersList.find(u => u.id === targetId);
-    if (target && isMainAdminAccount(target)) {
-      alert('L account Amministratore Principale non può essere eliminato.');
-      return;
-    }
-    if (!confirm('Sei sicuro di voler eliminare definitivamente questo utente dal sistema?')) return;
-    setUsersList(prev => prev.filter(u => u.id !== targetId));
-    if (user && user.id === targetId) {
-      handleLogout();
-    }
-    showToast('Utente eliminato.');
-  };
-
   const togglePinNews = (newsId: string) => {
     setNewsList(prev => prev.map(n => n.id === newsId ? { ...n, isPinned: !n.isPinned } : n));
     showToast('Stato evidenza notizia aggiornato!');
@@ -632,37 +514,30 @@ export default function FitaTaekwondoApp() {
     setEditLastName(user.lastName || '');
     setEditEmail(user.email || '');
     setEditRegion(user.region || 'Campania');
-    setOldPassword(''); setNewPassword(''); setConfirmNewPassword('');
     setProfileTabMode('dati');
     setIsProfileModalOpen(true);
   };
 
-  const handleSaveProfileData = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    const updatedUser = {
-      ...user,
-      firstName: editFirstName.trim(),
-      lastName: editLastName.trim(),
-      email: editEmail.trim(),
-      region: editRegion
-    };
-    setUser(updatedUser);
-    setUsersList(prev => prev.map(u => u.id === user.id ? { ...u, ...updatedUser } : u));
-    if (localStorage.getItem('tkd_remember_me') === 'true') {
-      localStorage.setItem('tkd_current_user', JSON.stringify(updatedUser));
-    }
-    showToast('Profilo aggiornato!');
+  const handleLogout = async () => {
+    await signOut();
+    setUser(null);
+    showToast('Logout effettuato');
   };
 
-  const handleSavePasswordChange = (e: React.FormEvent) => {
+  const handleSaveProfileData = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword !== confirmNewPassword) {
-      alert('La nuova password e la conferma non совпадаono.');
-      return;
+    if (!clerkUser) return;
+
+    try {
+      await clerkUser.update({
+        firstName: editFirstName.trim(),
+        lastName: editLastName.trim(),
+        unsafeMetadata: { ...clerkUser.unsafeMetadata, region: editRegion },
+      });
+      showToast('Profilo aggiornato!');
+    } catch {
+      showToast('Non è stato possibile aggiornare il profilo.');
     }
-    showToast('🔒 Password modificata!');
-    setOldPassword(''); setNewPassword(''); setConfirmNewPassword('');
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -882,18 +757,6 @@ export default function FitaTaekwondoApp() {
     .filter(n => selectedNewsCategory === 'Tutti' || n.category === selectedNewsCategory)
     .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
 
-  // ELABORAZIONE STRUTTURATA UTENTI PER MODALE ADMIN (ESCLUSIONE ADMIN ADMIN)
-  const activeUserInList = user ? usersList.find(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase()) : null;
-  const remainingUsers = usersList.filter(u => !isMainAdminAccount(u) && u.id !== activeUserInList?.id);
-
-  const sortedOtherAdmins = remainingUsers
-    .filter(u => u.role === 'admin')
-    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
-
-  const sortedOtherUsers = remainingUsers
-    .filter(u => u.role !== 'admin')
-    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
-
   return (
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col justify-between pb-20 md:pb-0">
       
@@ -924,14 +787,7 @@ export default function FitaTaekwondoApp() {
 
             <div className="flex items-center gap-4">
               {user && isAccountAdmin && (
-                <button
-                  onClick={toggleUserRole}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition-colors"
-                  title="Cambia la vista tra Admin e Utente Arbitro"
-                >
-                  <RefreshCw className="w-3 h-3 text-amber-400" />
-                  <span>Vista: <strong className={user.role === 'admin' ? 'text-red-400' : 'text-blue-400'}>{user.role.toUpperCase()}</strong></span>
-                </button>
+
               )}
 
               {user ? (
@@ -942,14 +798,16 @@ export default function FitaTaekwondoApp() {
                   </button>
 
                   {user.role === 'admin' && (
-                    <button
-                      onClick={() => setIsAdminUsersModalOpen(true)}
+                    <a
+                      href="https://dashboard.clerk.com/"
+                      target="_blank"
+                      rel="noreferrer"
                       className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#A60F2D] hover:bg-red-800 text-white text-[11px] font-bold shadow"
                     >
-                      <Users className="w-3.5 h-3.5" /> Gestione Utenti
-                    </button>
+                      <Users className="w-3.5 h-3.5" /> Gestione account
+                    </a>
                   )}
-                  
+
                   <button onClick={handleLogout} className="text-slate-400 hover:text-white p-1" title="Logout">
                     <LogOut className="w-3.5 h-3.5" />
                   </button>
@@ -1757,230 +1615,18 @@ export default function FitaTaekwondoApp() {
       <AnimatePresence>
         {authModalOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bg-white rounded-t-2xl sm:rounded-xl border border-slate-200 p-5 shadow-2xl relative text-xs max-h-[85vh] overflow-y-auto">
-              <button onClick={() => setAuthModalOpen(false)} className="absolute top-4 right-4 text-slate-400"><X className="w-5 h-5" /></button>
-
-              <div className="text-center mb-4">
-                <div className="w-10 h-10 bg-[#0B1B3D] rounded-lg text-white font-black flex items-center justify-center mx-auto mb-2 shadow border-b-2 border-[#A60F2D]">
-                  FITA
-                </div>
-                <h3 className="text-base font-bold text-[#0B1B3D]">
-                  {authMode === 'login' ? 'Accesso Portale Arbitri' : 'Nuova Registrazione'}
-                </h3>
+            <div className="w-full max-w-md bg-white rounded-t-2xl sm:rounded-xl border border-slate-200 p-5 shadow-2xl relative text-xs max-h-[90vh] overflow-y-auto">
+              <button type="button" onClick={() => setAuthModalOpen(false)} className="absolute top-4 right-4 z-10 text-slate-500" aria-label="Chiudi"><X className="w-5 h-5" /></button>
+              <div className="flex gap-2 mb-4 pr-8">
+                <button type="button" onClick={() => setAuthMode('login')} className={`flex-1 rounded-lg px-3 py-2 font-bold ${authMode === 'login' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Accedi</button>
+                <button type="button" onClick={() => setAuthMode('register')} className={`flex-1 rounded-lg px-3 py-2 font-bold ${authMode === 'register' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Registrati</button>
               </div>
-
-              {authMode === 'login' && (
-                <form onSubmit={handleLoginSubmit} className="space-y-3">
-                  <div>
-                    <label className="block text-slate-600 font-bold mb-1">Email</label>
-                    <input type="email" required placeholder="arbitro@fita.it" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-600 font-bold mb-1">Password</label>
-                    <input type="password" required placeholder="••••••••" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                  </div>
-
-                  <div className="py-1">
-                    <label onClick={() => setRememberMe(!rememberMe)} className="flex items-center gap-2 cursor-pointer text-slate-600 font-semibold select-none">
-                      {rememberMe ? <CheckSquare className="w-4 h-4 text-[#0B1B3D]" /> : <Square className="w-4 h-4 text-slate-400" />}
-                      <span>Ricordami su questo dispositivo</span>
-                    </label>
-                  </div>
-
-                  <button type="submit" className="w-full py-2.5 rounded bg-[#0B1B3D] text-white font-bold shadow hover:bg-slate-800 transition-colors">
-                    Accedi
-                  </button>
-
-                  <div className="text-center pt-3 border-t border-slate-200">
-                    <span className="text-slate-500">Non hai un account? </span>
-                    <button
-                      type="button"
-                      onClick={() => setAuthMode('register')}
-                      className="text-[#0B1B3D] font-bold hover:underline"
-                    >
-                      Registrati
-                    </button>
-                  </div>
-                </form>
+              {authMode === 'login' ? (
+                <SignIn routing="hash" signUpUrl="/sign-up" />
+              ) : (
+                <SignUp routing="hash" signInUrl="/sign-in" />
               )}
-
-              {authMode === 'register' && (
-                <form onSubmit={handleRegisterSubmit} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-slate-600 font-bold mb-1">Nome *</label>
-                      <input type="text" required placeholder="Marco" value={authFirstName} onChange={(e) => setAuthFirstName(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                    </div>
-                    <div>
-                      <label className="block text-slate-600 font-bold mb-1">Cognome *</label>
-                      <input type="text" required placeholder="Rossi" value={authLastName} onChange={(e) => setAuthLastName(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-600 font-bold mb-1">Email *</label>
-                    <input type="email" required placeholder="marco.rossi@fita.it" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-600 font-bold mb-1">Password *</label>
-                    <input type="password" required placeholder="••••••••" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-600 font-bold mb-1">Regione / Comitato</label>
-                    <select value={authRegion} onChange={(e) => setAuthRegion(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800">
-                      {['Campania', 'Lazio', 'Lombardia', 'Piemonte', 'Sicilia', 'Veneto', 'Emilia-Romagna', 'Puglia', 'Toscana'].map(r => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="py-1">
-                    <label onClick={() => setRememberMe(!rememberMe)} className="flex items-center gap-2 cursor-pointer text-slate-600 font-semibold select-none">
-                      {rememberMe ? <CheckSquare className="w-4 h-4 text-[#0B1B3D]" /> : <Square className="w-4 h-4 text-slate-400" />}
-                      <span>Ricordami su questo dispositivo</span>
-                    </label>
-                  </div>
-
-                  <button type="submit" className="w-full py-2.5 rounded bg-[#0B1B3D] text-white font-bold shadow hover:bg-slate-800 transition-colors">
-                    Crea Account
-                  </button>
-
-                  <div className="text-center pt-2 border-t border-slate-200">
-                    <span className="text-slate-500">Hai già un account? </span>
-                    <button type="button" onClick={() => setAuthMode('login')} className="text-[#0B1B3D] font-bold hover:underline">
-                      Accedi
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* --- MODALE GESTIONE UTENTI ADMIN STRUTTURATO --- */}
-      <AnimatePresence>
-        {isAdminUsersModalOpen && user && user.role === 'admin' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <h3 className="text-base font-bold text-[#0B1B3D] flex items-center gap-2">
-                  <Users className="w-5 h-5 text-red-600" />
-                  <span>Pannello Gestione Utenti & Admin</span>
-                </h3>
-                <button onClick={() => setIsAdminUsersModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4 text-xs">
-                {/* 1. UTENTE ATTUALE IN USO */}
-                {activeUserInList && (
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block mb-1.5">
-                      Account In Uso
-                    </span>
-                    <div className="p-3 bg-emerald-50/60 rounded-lg border border-emerald-300 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-slate-800">{activeUserInList.firstName} {activeUserInList.lastName}</span>
-                          <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold text-[10px] border border-red-200 flex items-center gap-1">
-                            <ShieldCheck className="w-3 h-3 text-red-600" /> Admin
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{activeUserInList.email} • {activeUserInList.region}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* SEPARATORE GRAFICO LEGGERO */}
-                <div className="relative py-1">
-                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
-                  <div className="relative flex justify-center text-[10px] uppercase font-bold text-slate-400">
-                    <span className="bg-white px-3">Altri Utenti Registrati</span>
-                  </div>
-                </div>
-
-                {/* 2. GLI ALTRI AMMINISTRATORI (IN ORDINE ALFABETICO) */}
-                {sortedOtherAdmins.length > 0 && (
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-bold uppercase text-slate-500">Amministratori</span>
-                    {sortedOtherAdmins.map((u) => (
-                      <div key={u.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm text-slate-800">{u.firstName} {u.lastName}</span>
-                            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold text-[10px] border border-red-200 flex items-center gap-1">
-                              <ShieldCheck className="w-3 h-3 text-red-600" /> Admin
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{u.email} • {u.region}</p>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <button
-                            onClick={() => handleDemoteToUser(u.id)}
-                            className="px-2.5 py-1 rounded text-[11px] font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center gap-1 transition-colors"
-                            title="Rendi un Utente Arbitro semplice"
-                          >
-                            <UserX className="w-3.5 h-3.5" /> Declassa
-                          </button>
-
-                          <button
-                            onClick={() => handleDeleteUser(u.id)}
-                            className="p-1.5 rounded text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
-                            title="Elimina utente"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* 3. RESTO DEGLI UTENTI (IN ORDINE ALFABETICO) */}
-                {sortedOtherUsers.length > 0 && (
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-bold uppercase text-slate-500">Utenti Arbitri</span>
-                    {sortedOtherUsers.map((u) => (
-                      <div key={u.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm text-slate-800">{u.firstName} {u.lastName}</span>
-                            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-bold text-[10px] border border-blue-200">
-                              Utente Arbitro
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{u.email} • {u.region}</p>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <button
-                            onClick={() => handlePromoteToAdmin(u.id)}
-                            className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 transition-colors shadow-sm"
-                            title="Rendi Amministratore del sistema"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" /> Promuovi Admin
-                          </button>
-
-                          <button
-                            onClick={() => handleDeleteUser(u.id)}
-                            className="p-1.5 rounded text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
-                            title="Elimina utente"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <p className="mt-3 text-center text-[10px] text-slate-500">Il recupero password invia un codice all’email verificata.</p>
             </div>
           </div>
         )}
@@ -2027,7 +1673,8 @@ export default function FitaTaekwondoApp() {
                   </div>
                   <div>
                     <label className="block text-slate-600 font-bold mb-1">Email</label>
-                    <input type="email" required value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
+                    <input type="email" value={editEmail} readOnly className="w-full bg-slate-100 border p-2 rounded text-slate-500" />
+                    <p className="mt-1 text-[10px] text-slate-500">Per aggiornare l’email usa le impostazioni sicure dell’account.</p>
                   </div>
                   <div className="flex justify-between items-center pt-3 border-t">
                     <button type="button" onClick={handleLogout} className="text-red-600 font-bold text-xs flex items-center gap-1">
@@ -2039,19 +1686,9 @@ export default function FitaTaekwondoApp() {
               )}
 
               {profileTabMode === 'sicurezza' && (
-                <form onSubmit={handleSavePasswordChange} className="space-y-3">
-                  <div>
-                    <label className="block text-slate-600 font-bold mb-1">Nuova Password</label>
-                    <input type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                  </div>
-                  <div>
-                    <label className="block text-slate-600 font-bold mb-1">Conferma Password</label>
-                    <input type="password" required value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                  </div>
-                  <div className="flex justify-end pt-3 border-t">
-                    <button type="submit" className="px-4 py-2 rounded bg-[#0B1B3D] text-white font-bold">Aggiorna Password</button>
-                  </div>
-                </form>
+                <div className="max-h-[65vh] overflow-y-auto">
+                  <UserProfile routing="hash" />
+                </div>
               )}
             </div>
           </div>
