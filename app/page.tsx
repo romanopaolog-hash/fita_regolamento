@@ -1308,6 +1308,17 @@ export default function FitaTaekwondoApp() {
                             className="p-3.5 sm:p-5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 select-none"
                           >
                             <div className="flex items-center gap-2.5">
+                              {user && user.role === 'admin' && isSelectingArticles && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); toggleArticleSelection(sub.id); }}
+                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 transition-colors ${selectedArticleIds.includes(sub.id) ? 'border-red-700 bg-red-50 text-red-700' : 'border-slate-300 bg-white text-slate-400 hover:border-slate-500 hover:text-slate-700'}`}
+                                  aria-label={selectedArticleIds.includes(sub.id) ? `Deseleziona ${sub.title}` : `Seleziona ${sub.title}`}
+                                  aria-pressed={selectedArticleIds.includes(sub.id)}
+                                >
+                                  {selectedArticleIds.includes(sub.id) ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                                </button>
+                              )}
                               <div className={`p-2 rounded-lg shrink-0 ${isOpen ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-500'}`}>
                                 <BookOpen className="w-4 h-4" />
                               </div>
@@ -1334,17 +1345,6 @@ export default function FitaTaekwondoApp() {
                                 <Star className={`w-4 h-4 ${isFav ? 'fill-amber-500' : ''}`} />
                               </button>
 
-                              {user && user.role === 'admin' && isSelectingArticles && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); toggleArticleSelection(sub.id); }}
-                                  className={`rounded p-1 ${selectedArticleIds.includes(sub.id) ? 'text-red-700' : 'text-slate-400 hover:text-slate-700'}`}
-                                  aria-label={selectedArticleIds.includes(sub.id) ? `Deseleziona ${sub.title}` : `Seleziona ${sub.title}`}
-                                  aria-pressed={selectedArticleIds.includes(sub.id)}
-                                >
-                                  {selectedArticleIds.includes(sub.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                </button>
-                              )}
 
                               {user && user.role === 'admin' && (
                                 <div className="flex items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
