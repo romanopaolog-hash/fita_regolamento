@@ -678,7 +678,7 @@ export default function FitaTaekwondoApp() {
     setFormTitle(sub.title);
     setFormContent(sub.content);
     setFormTags(sub.tags ? sub.tags.join(', ') : '');
-    setFormSource(sub.source ?? '');
+    setFormSource((sub as any).source ?? '');
     setFormMediaUrl(sub.media && sub.media[0] ? sub.media[0].url : '');
     setFormMediaType(sub.media && sub.media[0] ? sub.media[0].type : 'image');
     setSelectedFileName(null);
@@ -1172,7 +1172,7 @@ export default function FitaTaekwondoApp() {
 
                               {(sub as any).source?.trim() && (
                                 <p className="mt-3 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
-                                  <span className="font-semibold text-slate-600">Fonte / riferimento:</span> {sub.source}
+                                  <span className="font-semibold text-slate-600">Fonte / riferimento:</span> {(sub as any).source}
                                 </p>
                               )}
 
