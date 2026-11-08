@@ -11,24 +11,14 @@ type ArticleSection = {
 };
 
 async function readArticles() {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const metadata = await head(ARTICLES_PATH);
-    if (!metadata) return { sections: null, etag: null };
+  const blob = await get(ARTICLES_PATH, { access: 'private', useCache: false });
+  if (!blob) return { sections: null, etag: null, url: null };
 
-    const blob = await get(ARTICLES_PATH, { access: 'private', useCache: false });
-    if (!blob) continue;
+  const text = await new Response(blob.stream).text();
+  const data = JSON.parse(text) as { sections?: ArticleSection[] };
+  if (!Array.isArray(data.sections)) throw new Error('Invalid shared article data');
 
-    const latestMetadata = await head(ARTICLES_PATH);
-    if (metadata.etag !== blob.blob.etag || metadata.etag !== latestMetadata?.etag) continue;
-
-    const text = await new Response(blob.stream).text();
-    const data = JSON.parse(text) as { sections?: ArticleSection[] };
-    if (!Array.isArray(data.sections)) throw new Error('Invalid shared article data');
-
-    return { sections: data.sections, etag: metadata.etag };
-  }
-
-  throw new Error('Shared article archive changed while reading');
+  return { sections: data.sections, etag: blob.blob.etag, url: blob.blob.url };
 }
 
 function isValidSections(value: unknown): value is ArticleSection[] {
@@ -55,7 +45,8 @@ function noStoreHeaders() {
 
 export async function GET() {
   try {
-    return Response.json(await readArticles(), { headers: noStoreHeaders() });
+    const { sections, etag } = await readArticles();
+    return Response.json({ sections, etag }, { headers: noStoreHeaders() });
   } catch {
     return Response.json(
       { error: 'Impossibile leggere gli articoli condivisi.' },
@@ -113,7 +104,7 @@ export async function PUT(request: Request) {
     }
 
     stage = 'lettura metadati Blob';
-    const metadata = await head(ARTICLES_PATH);
+    const metadata = current.url ? await head(current.url) : null;
     if ((metadata?.etag ?? null) !== current.etag) {
       const latest = await readArticles();
       return Response.json(latest, { status: 409, headers: noStoreHeaders() });
