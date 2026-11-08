@@ -67,14 +67,22 @@ export async function GET(request: Request) {
   const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
 
   try {
-    const page = await access.clerk.users.getUserList({
-      limit: PAGE_SIZE,
-      offset,
-      orderBy: '-created_at',
-    });
+    const allUsers = [];
+    let cursor = 0;
+    while (true) {
+      const page = await access.clerk.users.getUserList({ limit: 100, offset: cursor });
+      allUsers.push(...page.data);
+      if (page.data.length < 100) break;
+      cursor += page.data.length;
+    }
+    const users = allUsers
+      .map(publicUser)
+      .sort((a, b) => Number(b.role === 'admin') - Number(a.role === 'admin')
+        || a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+        || a.email.localeCompare(b.email, 'it', { sensitivity: 'base' }));
     return Response.json({
-      users: page.data.map(publicUser),
-      nextOffset: page.data.length === PAGE_SIZE ? offset + page.data.length : null,
+      users: users.slice(offset, offset + PAGE_SIZE),
+      nextOffset: offset + PAGE_SIZE < users.length ? offset + PAGE_SIZE : null,
     }, { headers: noStore });
   } catch {
     return Response.json({ error: 'Impossibile caricare gli utenti.' }, { status: 503, headers: noStore });
