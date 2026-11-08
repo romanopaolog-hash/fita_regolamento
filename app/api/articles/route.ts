@@ -11,14 +11,24 @@ type ArticleSection = {
 };
 
 async function readArticles() {
-  const blob = await get(ARTICLES_PATH, { access: 'private', useCache: false });
-  if (!blob) return { sections: null, etag: null };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const metadata = await head(ARTICLES_PATH, { access: 'private' });
+    if (!metadata) return { sections: null, etag: null };
 
-  const text = await new Response(blob.stream).text();
-  const data = JSON.parse(text) as { sections?: ArticleSection[] };
-  if (!Array.isArray(data.sections)) throw new Error('Invalid shared article data');
+    const blob = await get(ARTICLES_PATH, { access: 'private', useCache: false });
+    if (!blob) continue;
 
-  return { sections: data.sections, etag: blob.blob.etag };
+    const latestMetadata = await head(ARTICLES_PATH, { access: 'private' });
+    if (metadata.etag !== blob.blob.etag || metadata.etag !== latestMetadata?.etag) continue;
+
+    const text = await new Response(blob.stream).text();
+    const data = JSON.parse(text) as { sections?: ArticleSection[] };
+    if (!Array.isArray(data.sections)) throw new Error('Invalid shared article data');
+
+    return { sections: data.sections, etag: metadata.etag };
+  }
+
+  throw new Error('Shared article archive changed while reading');
 }
 
 function isValidSections(value: unknown): value is ArticleSection[] {
