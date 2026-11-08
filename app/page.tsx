@@ -213,6 +213,9 @@ export default function FitaTaekwondoApp() {
   const [activeTabMode, setActiveTabMode] = useState<'rules' | 'materials'>('rules');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [isArticleSearchFocused, setIsArticleSearchFocused] = useState(false);
+  const [isSelectingArticles, setIsSelectingArticles] = useState(false);
+  const [selectedArticleIds, setSelectedArticleIds] = useState<string[]>([]);
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({});
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -634,6 +637,25 @@ export default function FitaTaekwondoApp() {
     setIsEditingModalOpen(true);
   };
 
+  const toggleArticleSelection = (subId: string) => {
+    setSelectedArticleIds(prev => prev.includes(subId) ? prev.filter(id => id !== subId) : [...prev, subId]);
+  };
+
+  const handleDeleteSelectedArticles = () => {
+    if (!user || user.role !== 'admin' || selectedArticleIds.length === 0) return;
+    if (!confirm(`Eliminare definitivamente ${selectedArticleIds.length} articoli selezionati?`)) return;
+
+    const deletedIds = new Set(selectedArticleIds);
+    setSections(prev => prev.map(section => ({
+      ...section,
+      subsections: section.subsections.filter(sub => !deletedIds.has(sub.id))
+    })));
+    setFavorites(prev => prev.filter(id => !deletedIds.has(id)));
+    setSelectedArticleIds([]);
+    setIsSelectingArticles(false);
+    showToast(`Eliminati ${deletedIds.size} articoli.`);
+  };
+
   const handleDeleteSubsection = (secId: string, subId: string) => {
     if (!confirm('Eliminare questo articolo?')) return;
     setSections(prev =>
@@ -643,6 +665,18 @@ export default function FitaTaekwondoApp() {
   };
 
   const currentSection = sections.find(s => s.id === activeSectionId);
+
+  const articleSearchSuggestions = searchQuery.trim().length >= 2
+    ? sections.flatMap(section => section.subsections.map(sub => ({ section, sub })))
+        .filter(({ section, sub }) => {
+          const query = searchQuery.trim().toLowerCase();
+          return sub.title.toLowerCase().includes(query)
+            || sub.content.toLowerCase().includes(query)
+            || (sub.tags && sub.tags.some(tag => tag.toLowerCase().includes(query)))
+            || section.title.toLowerCase().includes(query);
+        })
+        .slice(0, 6)
+    : [];
 
   const filteredSubsections = currentSection ? currentSection.subsections.filter(sub => {
     const matchesSearch =
@@ -760,10 +794,51 @@ export default function FitaTaekwondoApp() {
                   type="text"
                   placeholder="Cerca norme..."
                   value={searchQuery}
+                  onFocus={() => setIsArticleSearchFocused(true)}
+                  onBlur={() => window.setTimeout(() => setIsArticleSearchFocused(false), 120)}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full h-8 sm:h-9 bg-slate-100 border border-slate-300 rounded-lg pl-8 pr-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#0B1B3D]"
+                  aria-label="Cerca articoli e norme"
+                  aria-autocomplete="list"
+                  aria-expanded={isArticleSearchFocused && articleSearchSuggestions.length > 0}
                 />
+                {isArticleSearchFocused && articleSearchSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl" role="listbox" aria-label="Suggerimenti articoli">
+                    {articleSearchSuggestions.map(({ section, sub }) => (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        role="option"
+                        aria-selected="false"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setActiveSectionId(section.id);
+                          setActiveTabMode('rules');
+                          setSearchQuery(sub.title);
+                          setOpenAccordions(prev => ({ ...prev, [sub.id]: true }));
+                          setIsArticleSearchFocused(false);
+                        }}
+                        className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50"
+                      >
+                        <span className="block truncate text-xs font-bold text-[#0B1B3D]">{sub.title}</span>
+                        <span className="mt-0.5 block truncate text-[10px] text-slate-500">{section.shortTitle || section.title}{sub.tags?.length ? ` · ${sub.tags.slice(0, 3).join(', ')}` : ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+              {activeSectionId !== 'home' && (
+                <button
+                  type="button"
+                  onClick={() => setShowOnlyFavorites(prev => !prev)}
+                  aria-pressed={showOnlyFavorites}
+                  title={showOnlyFavorites ? 'Mostra tutti gli articoli' : 'Mostra solo i preferiti'}
+                  className={`flex h-8 sm:h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2 sm:px-3 text-xs font-bold transition-colors ${showOnlyFavorites ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <Star className={`h-4 w-4 ${showOnlyFavorites ? 'fill-amber-500 text-amber-500' : 'text-amber-500'}`} />
+                  <span className="hidden sm:inline">{showOnlyFavorites ? 'Preferiti' : 'Preferiti'}</span>
+                </button>
+              )}
 
               <button
                 onClick={toggleNotifications}
@@ -950,19 +1025,14 @@ export default function FitaTaekwondoApp() {
 
               {activeTabMode === 'rules' && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                    <button
-                      onClick={() => setShowOnlyFavorites(prev => !prev)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 border ${
-                        showOnlyFavorites ? 'bg-amber-500 text-white border-amber-500' : 'bg-slate-100 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      <Star className={`w-3.5 h-3.5 ${showOnlyFavorites ? 'fill-white' : 'text-amber-500'}`} />
-                      <span>{showOnlyFavorites ? 'Preferiti' : 'Tutti'}</span>
-                    </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span>{showOnlyFavorites ? 'Articoli preferiti' : 'Tutti gli articoli'}</span>
+                      {isSelectingArticles && <span className="font-semibold text-[#0B1B3D]">{selectedArticleIds.length} selezionati</span>}
+                    </div>
 
                     {user && user.role === 'admin' && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => {
                             setEditingSubsection(null);
@@ -984,6 +1054,26 @@ export default function FitaTaekwondoApp() {
                         >
                           <Upload className="w-3.5 h-3.5" /> Importa più articoli
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isSelectingArticles) setSelectedArticleIds([]);
+                            setIsSelectingArticles(prev => !prev);
+                          }}
+                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border font-bold text-xs ${isSelectingArticles ? 'border-slate-300 bg-slate-100 text-slate-700' : 'border-[#0B1B3D] text-[#0B1B3D] hover:bg-slate-50'}`}
+                        >
+                          {isSelectingArticles ? <X className="w-3.5 h-3.5" /> : <CheckSquare className="w-3.5 h-3.5" />}
+                          {isSelectingArticles ? 'Annulla selezione' : 'Seleziona'}
+                        </button>
+                        {isSelectingArticles && selectedArticleIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDeleteSelectedArticles}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-700 text-white font-bold text-xs hover:bg-red-800"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Elimina selezionati
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -998,7 +1088,7 @@ export default function FitaTaekwondoApp() {
                       const isFav = favorites.includes(sub.id);
 
                       return (
-                        <div key={sub.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div key={sub.id} className={`bg-white rounded-xl border shadow-sm overflow-hidden ${selectedArticleIds.includes(sub.id) ? 'border-red-300 ring-1 ring-red-200' : 'border-slate-200'}`}>
                           <div
                             onClick={() => toggleAccordion(sub.id)}
                             className="p-3.5 sm:p-5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 select-none"
@@ -1029,6 +1119,18 @@ export default function FitaTaekwondoApp() {
                               >
                                 <Star className={`w-4 h-4 ${isFav ? 'fill-amber-500' : ''}`} />
                               </button>
+
+                              {user && user.role === 'admin' && isSelectingArticles && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); toggleArticleSelection(sub.id); }}
+                                  className={`rounded p-1 ${selectedArticleIds.includes(sub.id) ? 'text-red-700' : 'text-slate-400 hover:text-slate-700'}`}
+                                  aria-label={selectedArticleIds.includes(sub.id) ? `Deseleziona ${sub.title}` : `Seleziona ${sub.title}`}
+                                  aria-pressed={selectedArticleIds.includes(sub.id)}
+                                >
+                                  {selectedArticleIds.includes(sub.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                                </button>
+                              )}
 
                               {user && user.role === 'admin' && (
                                 <div className="flex items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
