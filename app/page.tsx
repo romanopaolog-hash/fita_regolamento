@@ -436,6 +436,7 @@ export default function FitaTaekwondoApp() {
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [documentPreview, setDocumentPreview] = useState<any | null>(null);
   const [movingArticle, setMovingArticle] = useState<{ id: string; title: string; sourceSectionId: string } | null>(null);
   const [moveTargetSectionId, setMoveTargetSectionId] = useState('');
 
@@ -1921,12 +1922,10 @@ export default function FitaTaekwondoApp() {
                             <div className="p-2.5 rounded-lg bg-red-700 text-white font-black text-xs shrink-0">
                               {doc.format}
                             </div>
-                            <div>
-                              <h4 className="font-bold text-xs sm:text-sm text-[#0B1B3D]">{doc.title}</h4>
-                              <p className="text-[11px] text-slate-500 mt-0.5">{doc.description}</p>
-                            </div>
+                            <h4 className="font-bold text-xs sm:text-sm text-[#0B1B3D]">{doc.title}</h4>
                           </div>
 
+                          <button type="button" onClick={() => setDocumentPreview(doc)} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100">Anteprima</button>
                           <a
                             href={doc.url}
                             download={doc.title}
@@ -2247,6 +2246,17 @@ export default function FitaTaekwondoApp() {
                 </div>
               </form>
             </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {documentPreview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-3">
+            <section className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+              <header className="flex items-center justify-between gap-3 border-b p-4"><h2 className="truncate font-bold">{documentPreview.title}</h2><button type="button" onClick={() => setDocumentPreview(null)} aria-label="Chiudi anteprima"><X className="h-5 w-5" /></button></header>
+              {/\.pdf(?:$|[?#])/i.test(documentPreview.title) ? <iframe title={documentPreview.title} src={`${documentPreview.url}${documentPreview.url.includes('?') ? '&' : '?'}preview=1`} className="min-h-0 flex-1" /> : <div className="m-auto p-8 text-center">Anteprima integrata disponibile per i PDF. Scarica questo file per visualizzarlo.</div>}
+            </section>
           </div>
         )}
       </AnimatePresence>
