@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SignIn, SignUp, useClerk, useUser } from '@clerk/nextjs';
+import { getAccountApprovalStatus } from '../lib/account-approval';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -37,6 +38,14 @@ import {
   ShieldCheck,
   Pin
 } from 'lucide-react';
+
+type AdminApprovalRequest = {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: number;
+  status: 'pending' | 'rejected';
+};
 
 const BULK_ARTICLE_TEMPLATE = `=== ARTICOLO ===
 Titolo: Argomento dell'articolo, senza numerazione
@@ -297,6 +306,12 @@ export default function FitaTaekwondoApp() {
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [isApprovalPanelOpen, setIsApprovalPanelOpen] = useState(false);
+  const [approvalFilter, setApprovalFilter] = useState<'pending' | 'rejected'>('pending');
+  const [approvalRequests, setApprovalRequests] = useState<AdminApprovalRequest[]>([]);
+  const [approvalRequestsLoading, setApprovalRequestsLoading] = useState(false);
+  const [approvalRequestsError, setApprovalRequestsError] = useState<string | null>(null);
+  const [approvalRequestBusyId, setApprovalRequestBusyId] = useState<string | null>(null);
 
 
   const [activeVideoModal, setActiveVideoModal] = useState<{ url: string; caption: string; title: string } | null>(null);
@@ -338,7 +353,7 @@ export default function FitaTaekwondoApp() {
   const { signOut } = useClerk();
 
   useEffect(() => {
-    if (!clerkLoaded || !clerkUser) return;
+    if (!clerkLoaded || !clerkUser || getAccountApprovalStatus(clerkUser) !== 'approved') return;
     let active = true;
     let deviceSections = DEFAULT_SECTIONS;
     const savedSecs = localStorage.getItem('tkd_sections');
@@ -404,7 +419,7 @@ export default function FitaTaekwondoApp() {
       });
 
     return () => { active = false; };
-  }, [clerkLoaded, clerkUser?.id]);
+  }, [clerkLoaded, clerkUser?.id, clerkUser?.publicMetadata.role, clerkUser?.publicMetadata.approvalStatus]);
 
   useEffect(() => {
     if (!isSectionsLoaded) return;
@@ -464,6 +479,27 @@ export default function FitaTaekwondoApp() {
   useEffect(() => { localStorage.setItem('tkd_news', JSON.stringify(newsList)); }, [newsList]);
   useEffect(() => { localStorage.setItem('tkd_favorites', JSON.stringify(favorites)); }, [favorites]);
   const isAccountAdmin = user?.role === 'admin';
+
+  useEffect(() => {
+    if (!isAccountAdmin) return;
+    let active = true;
+    setApprovalRequestsLoading(true);
+    setApprovalRequestsError(null);
+    fetch('/api/admin/approvals', { cache: 'no-store', credentials: 'same-origin' })
+      .then(async response => {
+        const result = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(result?.error || 'Impossibile caricare le richieste.');
+        return result;
+      })
+      .then(result => {
+        if (active) setApprovalRequests(Array.isArray(result.requests) ? result.requests : []);
+      })
+      .catch(error => {
+        if (active) setApprovalRequestsError(error instanceof Error ? error.message : 'Impossibile caricare le richieste.');
+      })
+      .finally(() => { if (active) setApprovalRequestsLoading(false); });
+    return () => { active = false; };
+  }, [isAccountAdmin]);
 
   useEffect(() => {
     if (!clerkLoaded) return;
@@ -537,6 +573,28 @@ export default function FitaTaekwondoApp() {
     await signOut();
     setUser(null);
     showToast('Logout effettuato');
+  };
+
+  const handleApprovalAction = async (request: AdminApprovalRequest, action: 'approve' | 'reject') => {
+    setApprovalRequestBusyId(request.id);
+    try {
+      const response = await fetch('/api/admin/approvals', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ userId: request.id, action }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || 'Impossibile aggiornare la richiesta.');
+      setApprovalRequests(previous => action === 'approve'
+        ? previous.filter(item => item.id !== request.id)
+        : previous.map(item => item.id === request.id ? { ...item, status: 'rejected' } : item));
+      showToast(action === 'approve' ? `Account approvato: ${request.email}` : `Richiesta rifiutata: ${request.email}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossibile aggiornare la richiesta.');
+    } finally {
+      setApprovalRequestBusyId(null);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -810,6 +868,34 @@ export default function FitaTaekwondoApp() {
     );
   }
 
+  if (getAccountApprovalStatus(clerkUser) !== 'approved') {
+    const isRejected = getAccountApprovalStatus(clerkUser) === 'rejected';
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F4F6F9] p-4">
+        <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-xl">
+          <ShieldCheck className="mx-auto mb-3 h-10 w-10 text-amber-600" />
+          <h1 className="text-xl font-black text-[#0B1B3D]">{isRejected ? 'Richiesta non approvata' : 'Accesso in attesa di approvazione'}</h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            {isRejected
+              ? 'Un amministratore non ha approvato questa richiesta. Se pensi si tratti di un errore, contatta un amministratore.'
+              : 'La registrazione è completata. Un amministratore deve approvare il tuo account prima che tu possa consultare il sito.'}
+          </p>
+          <p className="mt-3 text-xs text-slate-500">{clerkUser.primaryEmailAddress?.emailAddress || clerkUser.emailAddresses[0]?.emailAddress}</p>
+          <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
+            {!isRejected && (
+              <button type="button" onClick={() => clerkUser.reload()} className="rounded-lg bg-[#0B1B3D] px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">
+                Verifica approvazione
+              </button>
+            )}
+            <button type="button" onClick={() => signOut()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+              Esci
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col justify-between pb-20 md:pb-0">
       
@@ -940,6 +1026,24 @@ export default function FitaTaekwondoApp() {
               >
                 {notificationsEnabled ? <Bell className="w-4 h-4 text-emerald-600 fill-emerald-600/20" /> : <BellOff className="w-4 h-4 text-slate-400" />}
               </button>
+              {isAccountAdmin && adminMode && (
+                <button
+                  type="button"
+                  onClick={() => { setApprovalFilter('pending'); setIsApprovalPanelOpen(true); }}
+                  className="relative flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[#0B1B3D] bg-[#0B1B3D] px-2.5 text-xs font-bold text-white hover:bg-slate-800"
+                  aria-label={approvalRequests.filter(request => request.status === 'pending').length
+                    ? `Richieste di accesso, ${approvalRequests.filter(request => request.status === 'pending').length} in attesa`
+                    : 'Richieste di accesso'}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span className="hidden sm:inline">Richieste</span>
+                  {approvalRequests.filter(request => request.status === 'pending').length > 0 && (
+                    <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] leading-none text-[#0B1B3D]">
+                      {approvalRequests.filter(request => request.status === 'pending').length}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -1672,6 +1776,70 @@ export default function FitaTaekwondoApp() {
                 </div>
               </form>
             </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- SEZIONE ADMIN: APPROVAZIONE ACCOUNT --- */}
+      <AnimatePresence>
+        {isApprovalPanelOpen && isAccountAdmin && adminMode && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-3 backdrop-blur-sm sm:p-5">
+            <section className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+              <header className="flex items-start justify-between gap-3 border-b border-slate-200 p-4 sm:p-5">
+                <div>
+                  <h2 className="text-lg font-black text-[#0B1B3D]">Richieste di accesso</h2>
+                  <p className="mt-1 text-xs text-slate-500">I nuovi account possono accedere al regolamento solo dopo l’approvazione di un admin.</p>
+                </div>
+                <button type="button" onClick={() => setIsApprovalPanelOpen(false)} className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Chiudi">
+                  <X className="h-5 w-5" />
+                </button>
+              </header>
+
+              <div className="flex gap-2 border-b border-slate-200 px-4 py-3 sm:px-5">
+                <button type="button" onClick={() => setApprovalFilter('pending')} className={`rounded-lg px-3 py-2 text-xs font-bold ${approvalFilter === 'pending' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>
+                  In attesa ({approvalRequests.filter(request => request.status === 'pending').length})
+                </button>
+                <button type="button" onClick={() => setApprovalFilter('rejected')} className={`rounded-lg px-3 py-2 text-xs font-bold ${approvalFilter === 'rejected' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>
+                  Rifiutate ({approvalRequests.filter(request => request.status === 'rejected').length})
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
+                {approvalRequestsLoading ? (
+                  <p className="py-8 text-center text-sm font-semibold text-slate-500">Caricamento richieste…</p>
+                ) : approvalRequestsError ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{approvalRequestsError}<p className="mt-1 text-xs text-red-600">Chiudi e riapri la sezione per riprovare.</p></div>
+                ) : approvalRequests.filter(request => request.status === approvalFilter).length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                    {approvalFilter === 'pending' ? 'Non ci sono richieste in attesa.' : 'Non ci sono richieste rifiutate.'}
+                  </div>
+                ) : (
+                  approvalRequests.filter(request => request.status === approvalFilter).map(request => (
+                    <article key={request.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-bold text-[#0B1B3D]">{request.name}</h3>
+                        <p className="truncate text-xs text-slate-600">{request.email}</p>
+                        <p className="mt-1 text-[10px] text-slate-400">Registrato il {new Date(request.createdAt).toLocaleDateString('it-IT')}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button type="button" disabled={approvalRequestBusyId === request.id} onClick={() => handleApprovalAction(request, 'approve')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:opacity-50">
+                          {approvalRequestBusyId === request.id ? 'Aggiornamento…' : 'Approva accesso'}
+                        </button>
+                        {approvalFilter === 'pending' && (
+                          <button type="button" disabled={approvalRequestBusyId === request.id} onClick={() => handleApprovalAction(request, 'reject')} className="rounded-lg border border-red-300 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
+                            Rifiuta
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+
+              <footer className="flex justify-end border-t border-slate-200 bg-slate-50 p-3">
+                <button type="button" onClick={() => setIsApprovalPanelOpen(false)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700">Chiudi</button>
+              </footer>
+            </section>
           </div>
         )}
       </AnimatePresence>
