@@ -330,6 +330,7 @@ export default function FitaTaekwondoApp() {
   const [formMediaUrl, setFormMediaUrl] = useState('');
   const [formMediaType, setFormMediaType] = useState<'image' | 'video'>('image');
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [isUploadingArticleMedia, setIsUploadingArticleMedia] = useState(false);
   const [isQuickImportModalOpen, setIsQuickImportModalOpen] = useState(false);
   const [bulkImportText, setBulkImportText] = useState('');
   const [bulkImportSectionId, setBulkImportSectionId] = useState('kyorugi');
@@ -597,13 +598,57 @@ export default function FitaTaekwondoApp() {
     }
   };
 
+  const handleArticleImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Seleziona un file immagine.');
+      return;
+    }
+    setIsUploadingArticleMedia(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file, file.name || 'immagine-incollata.png');
+      const response = await fetch('/api/articles/media', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData,
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || typeof result?.url !== 'string') {
+        throw new Error(result?.error || 'Impossibile caricare l’immagine.');
+      }
+      setSelectedFileName(file.name || 'Immagine incollata');
+      setFormMediaUrl(result.url);
+      setFormMediaType('image');
+      setMediaSourceType('file');
+      showToast('Immagine caricata. Salva l’articolo per condividerla.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossibile caricare l’immagine.');
+    } finally {
+      setIsUploadingArticleMedia(false);
+    }
+  };
+
+  const handlePasteImage = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const clipboardItem = Array.from(e.clipboardData.items).find(item => item.type.startsWith('image/'));
+    const file = clipboardItem?.getAsFile() ?? Array.from(e.clipboardData.files).find(item => item.type.startsWith('image/'));
+    if (!file) {
+      showToast('Negli appunti non è presente un’immagine. Copia un’immagine e riprova.');
+      return;
+    }
+    e.preventDefault();
+    void handleArticleImageFile(file);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFileName(file.name);
-      setFormMediaUrl(URL.createObjectURL(file));
-      setFormMediaType(file.type.startsWith('video/') ? 'video' : 'image');
+    if (!file) return;
+    if (file.type.startsWith('image/')) {
+      void handleArticleImageFile(file);
+      return;
     }
+    setSelectedFileName(file.name);
+    setFormMediaUrl(URL.createObjectURL(file));
+    setFormMediaType('video');
   };
 
   const handleDocFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -670,7 +715,7 @@ export default function FitaTaekwondoApp() {
 
   const handleSaveSubsection = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTitle.trim() || !formContent.trim()) return;
+    if (isUploadingArticleMedia || !formTitle.trim() || !formContent.trim()) return;
     const newSub = {
       id: editingSubsection ? editingSubsection.id : 'sub_' + Date.now(),
       hidden: (editingSubsection as any)?.hidden ?? false,
@@ -1635,7 +1680,23 @@ export default function FitaTaekwondoApp() {
                     </button>
                   </div>
                   {mediaSourceType === 'file' ? (
-                    <input type="file" accept="image/*,video/*" onChange={handleFileUpload} className="block w-full text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:font-semibold" />
+                    <div className="space-y-3">
+                      <div
+                        role="region"
+                        tabIndex={0}
+                        onPaste={handlePasteImage}
+                        aria-label="Area per incollare un’immagine"
+                        className="rounded-lg border-2 border-dashed border-blue-300 bg-blue-50 p-4 text-center outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      >
+                        <p className="text-xs font-bold text-blue-900">Incolla qui un’immagine dagli appunti</p>
+                        <p className="mt-1 text-[10px] text-blue-800">Clicca nell’area e premi Ctrl+V (⌘+V su Mac).</p>
+                      </div>
+                      <input type="file" accept="image/*,video/*" onChange={handleFileUpload} className="block w-full text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:font-semibold" />
+                      {isUploadingArticleMedia && <p role="status" className="text-xs font-semibold text-blue-700">Caricamento immagine…</p>}
+                      {formMediaUrl && formMediaType === 'image' && (
+                        <img src={formMediaUrl} alt="Anteprima immagine allegata" className="max-h-48 max-w-full rounded-lg border border-slate-200 object-contain" />
+                      )}
+                    </div>
                   ) : (
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input type="url" value={formMediaUrl} onChange={(e) => setFormMediaUrl(e.target.value)} placeholder="https://..." className="flex-1 bg-slate-50 border border-slate-300 p-2 rounded-lg text-slate-800" />
@@ -1650,8 +1711,8 @@ export default function FitaTaekwondoApp() {
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
                   <button type="button" onClick={() => setIsEditingModalOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 font-bold">Annulla</button>
-                  <button type="submit" className="px-4 py-2 rounded-lg bg-[#0B1B3D] text-white font-bold hover:bg-slate-800">
-                    {editingSubsection ? 'Salva modifiche' : 'Salva articolo'}
+                  <button type="submit" disabled={isUploadingArticleMedia} className="px-4 py-2 rounded-lg bg-[#0B1B3D] text-white font-bold hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                    {isUploadingArticleMedia ? 'Caricamento immagine…' : editingSubsection ? 'Salva modifiche' : 'Salva articolo'}
                   </button>
                 </div>
               </form>
