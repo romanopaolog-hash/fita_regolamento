@@ -1690,11 +1690,11 @@ export default function FitaTaekwondoApp() {
           </div>
         </header>
 
-        <aside role="alert" className="border-b border-amber-300 bg-amber-50 text-amber-950">
-          <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-3 sm:px-6 lg:px-8">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
-            <p className="text-xs leading-relaxed sm:text-sm">
-              <strong>Avviso importante:</strong> i contenuti di questo portale sono stati elaborati con l’ausilio dell’intelligenza artificiale e revisionati da una persona, ma possono comunque contenere errori o imprecisioni. Verifica sempre ogni informazione sul <a href="https://www.fita.it/" target="_blank" rel="noopener noreferrer" className="font-bold underline underline-offset-2">sito ufficiale FITA</a> e nei regolamenti ufficiali aggiornati prima di applicarla.
+        <aside aria-label="Nota sull’accuratezza dei contenuti" className="border-b border-slate-200 bg-slate-50 text-slate-600">
+          <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-1.5 sm:px-6 lg:px-8">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden="true" />
+            <p className="text-[10px] leading-relaxed sm:text-xs">
+              I contenuti sono stati elaborati con AI e revisionati da una persona, ma possono contenere errori: verifica le informazioni sul <a href="https://www.fita.it/" target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900">sito ufficiale FITA</a> e nei regolamenti aggiornati.
             </p>
           </div>
         </aside>
