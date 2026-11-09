@@ -152,7 +152,7 @@ function getShowcaseEmbedUrl(rawUrl: string): string | null {
     }
     if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
       const videoId = url.pathname.match(/\/video\/(\d+)/)?.[1];
-      return videoId ? `https://www.tiktok.com/embed/v2/${videoId}` : null;
+      return videoId ? `https://www.tiktok.com/player/v1/${videoId}?description=1&music_info=1` : null;
     }
   } catch {}
   return null;
@@ -2126,11 +2126,19 @@ export default function FitaTaekwondoApp() {
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                       {((currentSection as any).showcaseVideos || []).map((video: any) => {
                         const embedUrl = getShowcaseEmbedUrl(video.url);
+                        let isPortraitEmbed = false;
+                        try {
+                          const host = new URL(video.url).hostname.replace(/^www\\./, '');
+                          isPortraitEmbed = host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'tiktok.com' || host.endsWith('.tiktok.com');
+                        } catch {}
                         return (
                           <article key={video.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                            <div className="aspect-video bg-slate-950">
+                            <div
+                              className={isPortraitEmbed ? "mx-auto overflow-hidden bg-slate-950" : "aspect-video bg-slate-950"}
+                              style={isPortraitEmbed ? { width: 'min(100%, 380px, 42.1875vh)', aspectRatio: '9 / 16' } : undefined}
+                            >
                               {embedUrl ? (
-                                <iframe src={embedUrl} title={video.title} className="h-full w-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen />
+                                <iframe src={embedUrl} title={video.title} className="h-full w-full border-0" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen />
                               ) : (
                                 <video src={video.url} controls preload="metadata" className="h-full w-full object-contain" />
                               )}
