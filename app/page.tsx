@@ -137,22 +137,22 @@ function getShowcaseEmbedUrl(rawUrl: string): string | null {
   try {
     const url = new URL(rawUrl);
     const host = url.hostname.replace(/^www\./, '');
-    if (host === 'youtu.be') return \`https://www.youtube-nocookie.com/embed/\${url.pathname.slice(1)}\`;
+    if (host === 'youtu.be') return `https://www.youtube-nocookie.com/embed/${url.pathname.slice(1)}`;
     if (host === 'youtube.com' || host === 'm.youtube.com') {
       const videoId = url.searchParams.get('v') || url.pathname.match(/\/(?:embed|shorts)\/([^/?]+)/)?.[1];
-      return videoId ? \`https://www.youtube-nocookie.com/embed/\${videoId}\` : null;
+      return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : null;
     }
     if (host === 'vimeo.com') {
       const videoId = url.pathname.match(/\/(\d+)/)?.[1];
-      return videoId ? \`https://player.vimeo.com/video/\${videoId}\` : null;
+      return videoId ? `https://player.vimeo.com/video/${videoId}` : null;
     }
     if (host === 'instagram.com' || host.endsWith('.instagram.com')) {
       const post = url.pathname.match(/^\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/);
-      return post ? \`https://www.instagram.com/\${url.pathname.split('/')[1]}/\${post[1]}/embed\` : null;
+      return post ? `https://www.instagram.com/${url.pathname.split('/')[1]}/${post[1]}/embed` : null;
     }
     if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
       const videoId = url.pathname.match(/\/video\/(\d+)/)?.[1];
-      return videoId ? \`https://www.tiktok.com/embed/v2/\${videoId}\` : null;
+      return videoId ? `https://www.tiktok.com/embed/v2/${videoId}` : null;
     }
   } catch {}
   return null;
