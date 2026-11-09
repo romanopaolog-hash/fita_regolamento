@@ -445,6 +445,7 @@ export default function FitaTaekwondoApp() {
   const [formSectionId, setFormSectionId] = useState('kyorugi');
   const [formTitle, setFormTitle] = useState('');
   const [formContent, setFormContent] = useState('');
+  const [formSuggested, setFormSuggested] = useState(false);
   const articleContentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const newsContentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [formTags, setFormTags] = useState('');
@@ -1088,7 +1089,7 @@ export default function FitaTaekwondoApp() {
       id: editingSubsection ? editingSubsection.id : 'sub_' + Date.now(),
       addedAt: (editingSubsection as any)?.addedAt ?? new Date().toISOString(),
       hidden: (editingSubsection as any)?.hidden ?? false,
-      suggested: (editingSubsection as any)?.suggested ?? false,
+      suggested: formSuggested,
       title: formTitle,
       content: formContent,
       source: formSource.trim(),
@@ -1171,6 +1172,7 @@ export default function FitaTaekwondoApp() {
     setEditingSubsection(sub);
     setFormSectionId(sectionId);
     setFormTitle(sub.title);
+    setFormSuggested(sub.suggested === true);
     setFormContent(sub.content);
     setFormTags(sub.tags ? sub.tags.join(', ') : '');
     setFormSource((sub as any).source ?? '');
@@ -1728,7 +1730,7 @@ export default function FitaTaekwondoApp() {
                           onClick={() => {
                             setEditingSubsection(null);
                             setFormSectionId(currentSection.id);
-                            setFormTitle(''); setFormContent(''); setFormTags(''); setFormSource(''); setFormMediaUrl('');
+                            setFormTitle(''); setFormSuggested(false); setFormContent(''); setFormTags(''); setFormSource(''); setFormMediaUrl('');
                             setSelectedFileName(null);
                             setIsEditingModalOpen(true);
                           }}
@@ -2167,7 +2169,7 @@ export default function FitaTaekwondoApp() {
                   <input id="article-title" type="text" required value={formTitle} onChange={(e) => setFormTitle(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 focus:outline-none focus:border-[#0B1B3D]" />
                 </div>
 
-                <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900"><input type="checkbox" checked={!!(editingSubsection as any)?.suggested} onChange={e => setEditingSubsection((current: any) => ({ ...(current || {}), suggested: e.target.checked }))} /> Articolo suggerito</label>
+                <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900"><input type="checkbox" checked={formSuggested} onChange={e => setFormSuggested(e.target.checked)} /> Articolo suggerito</label>
                 <div>
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                     <label htmlFor="article-content" className="block text-slate-600 font-bold">Contenuto *</label>
