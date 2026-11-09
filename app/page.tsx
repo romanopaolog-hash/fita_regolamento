@@ -94,20 +94,57 @@ function parseBulkArticles(source: string) {
   return { articles, errors };
 }
 
-function renderFormattedText(content: string): React.ReactNode[] {
-  const formattedToken = /(\*\*[\s\S]+?\*\*|\*[^*\n]+\*|<u>[\s\S]+?<\/u>)/g;
+function renderFormattedText(content: string, onArticleLink?: (id: string) => void): React.ReactNode[] {
+  const formattedToken = /(\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<]+|\*\*[\s\S]+?\*\*|\*[^*\n]+\*|<u>[\s\S]+?<\/u>)/gi;
   return content.split(formattedToken).map((part, index) => {
+    const markdownLink = part.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/);
+    if (markdownLink) {
+      const [, label, href] = markdownLink;
+      if (href.startsWith('#article:')) {
+        const articleId = decodeURIComponent(href.slice('#article:'.length));
+        return <a key={index} href={href} onClick={event => { event.preventDefault(); onArticleLink?.(articleId); }} className="font-semibold text-blue-700 underline decoration-blue-400 underline-offset-2 hover:text-blue-900">{label}</a>;
+      }
+      if (/^https?:\/\//i.test(href)) {
+        return <a key={index} href={href} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline decoration-blue-400 underline-offset-2 hover:text-blue-900">{label}</a>;
+      }
+    }
+    if (/^https?:\/\//i.test(part)) {
+      const url = part.replace(/[.,!?;:]+$/, '');
+      const trailing = part.slice(url.length);
+      return <React.Fragment key={index}><a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline decoration-blue-400 underline-offset-2 hover:text-blue-900">{url}</a>{trailing}</React.Fragment>;
+    }
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-      return <strong key={index}>{renderFormattedText(part.slice(2, -2))}</strong>;
+      return <strong key={index}>{renderFormattedText(part.slice(2, -2), onArticleLink)}</strong>;
     }
     if (part.startsWith('<u>') && part.endsWith('</u>') && part.length > 7) {
-      return <u key={index}>{renderFormattedText(part.slice(3, -4))}</u>;
+      return <u key={index}>{renderFormattedText(part.slice(3, -4), onArticleLink)}</u>;
     }
     if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-      return <em key={index}>{renderFormattedText(part.slice(1, -1))}</em>;
+      return <em key={index}>{renderFormattedText(part.slice(1, -1), onArticleLink)}</em>;
     }
     return <React.Fragment key={index}>{part}</React.Fragment>;
   });
+}
+
+function reconcileNewsLists(cloudNews: any[], deviceNews: any[], lastSyncedNews: any[]) {
+  const cloudById = new Map<string, any>(cloudNews.map(item => [item.id, item]));
+  const deviceById = new Map<string, any>(deviceNews.map(item => [item.id, item]));
+  const snapshotById = new Map<string, any>(lastSyncedNews.map(item => [item.id, item]));
+
+  for (const [id, priorItem] of snapshotById) {
+    const deviceItem = deviceById.get(id);
+    const cloudItem = cloudById.get(id);
+    if (!deviceItem && cloudItem && JSON.stringify(cloudItem) === JSON.stringify(priorItem)) {
+      cloudById.delete(id);
+    } else if (deviceItem && JSON.stringify(deviceItem) !== JSON.stringify(priorItem)) {
+      cloudById.set(id, deviceItem);
+    }
+  }
+  for (const [id, deviceItem] of deviceById) {
+    if (!snapshotById.has(id)) cloudById.set(id, deviceItem);
+  }
+
+  return [...cloudById.values()];
 }
 
 // --- DATI DI DEFAULT ---
@@ -297,6 +334,10 @@ export default function FitaTaekwondoApp() {
   const lastSyncedSectionsRef = useRef<string | null>(null);
   const articleSyncAvailableRef = useRef(false);
   const [newsList, setNewsList] = useState(DEFAULT_NEWS);
+  const [isNewsLoaded, setIsNewsLoaded] = useState(false);
+  const newsSyncEtagRef = useRef<string | null>(null);
+  const lastSyncedNewsRef = useRef<string | null>(null);
+  const newsSyncAvailableRef = useRef(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [articleSort, setArticleSort] = useState<'custom' | 'title-asc' | 'title-desc'>('custom');
@@ -346,6 +387,7 @@ export default function FitaTaekwondoApp() {
   const [formTitle, setFormTitle] = useState('');
   const [formContent, setFormContent] = useState('');
   const articleContentInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const newsContentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [formTags, setFormTags] = useState('');
   const [formSource, setFormSource] = useState('');
   const [mediaSourceType, setMediaSourceType] = useState<'url' | 'file'>('file');
@@ -392,8 +434,36 @@ export default function FitaTaekwondoApp() {
     // Remove the old per-device secret; admin access is checked by Clerk on the server.
     localStorage.removeItem('tkd_article_sync_key');
 
+    let deviceNews: any[] = DEFAULT_NEWS;
     const savedNews = localStorage.getItem('tkd_news');
-    if (savedNews) { try { setNewsList(JSON.parse(savedNews)); } catch (e) {} }
+    if (savedNews) {
+      try {
+        const parsedNews = JSON.parse(savedNews);
+        if (Array.isArray(parsedNews)) deviceNews = parsedNews;
+      } catch {}
+    }
+    fetch('/api/news', { cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Shared news unavailable');
+        return response.json();
+      })
+      .then((result: { news?: any[] | null; etag?: string | null }) => {
+        if (!active) return;
+        newsSyncAvailableRef.current = true;
+        newsSyncEtagRef.current = result.etag ?? null;
+        const sharedNews = Array.isArray(result.news) ? result.news : null;
+        const resolvedNews = sharedNews ?? deviceNews;
+        lastSyncedNewsRef.current = sharedNews ? JSON.stringify(sharedNews) : null;
+        setNewsList(resolvedNews);
+        setIsNewsLoaded(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        newsSyncAvailableRef.current = false;
+        setNewsList(deviceNews);
+        setIsNewsLoaded(true);
+        showToast('Archivio news condiviso non raggiungibile: le notizie restano disponibili su questo dispositivo.');
+      });
     const savedFavs = localStorage.getItem('tkd_favorites');
     if (savedFavs) { try { setFavorites(JSON.parse(savedFavs)); } catch (e) {} }
     // Remove the legacy browser-only accounts and plaintext passwords during the Clerk migration.
@@ -500,7 +570,40 @@ export default function FitaTaekwondoApp() {
 
     return () => window.clearTimeout(timer);
   }, [sections, isSectionsLoaded, user?.role]);
-  useEffect(() => { localStorage.setItem('tkd_news', JSON.stringify(newsList)); }, [newsList]);
+  useEffect(() => {
+    if (!isNewsLoaded) return;
+    const serializedNews = JSON.stringify(newsList);
+    localStorage.setItem('tkd_news', serializedNews);
+    if (!newsSyncAvailableRef.current || user?.role !== 'admin' || serializedNews === lastSyncedNewsRef.current) return;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch('/api/news', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ news: newsList, etag: newsSyncEtagRef.current })
+        });
+        if (response.status === 409) {
+          const latest = await response.json();
+          newsSyncEtagRef.current = latest.etag ?? null;
+          const cloudNews = Array.isArray(latest.news) ? latest.news : [];
+          const snapshot = lastSyncedNewsRef.current ? JSON.parse(lastSyncedNewsRef.current) : [];
+          const mergedNews = reconcileNewsLists(cloudNews, newsList, snapshot);
+          lastSyncedNewsRef.current = JSON.stringify(cloudNews);
+          if (JSON.stringify(mergedNews) !== JSON.stringify(cloudNews)) setNewsList(mergedNews);
+          return;
+        }
+        const result = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(result?.error || 'Impossibile salvare le news condivise.');
+        newsSyncEtagRef.current = result.etag ?? null;
+        lastSyncedNewsRef.current = serializedNews;
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Impossibile salvare le news condivise.');
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [newsList, isNewsLoaded, user?.role]);
   useEffect(() => { localStorage.setItem('tkd_favorites', JSON.stringify(favorites)); }, [favorites]);
   const isAccountAdmin = user?.role === 'admin';
 
@@ -798,6 +901,84 @@ export default function FitaTaekwondoApp() {
       textarea.focus();
       textarea.setSelectionRange(start + opening.length, start + opening.length + selected.length);
     });
+  };
+
+  const applyNewsContentFormat = (format: 'bold' | 'italic' | 'underline') => {
+    const textarea = newsContentInputRef.current;
+    if (!textarea) return;
+
+    const formats = {
+      bold: ['**', '**'],
+      italic: ['*', '*'],
+      underline: ['<u>', '</u>'],
+    } as const;
+    const [opening, closing] = formats[format];
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = newsContent.slice(start, end) || 'testo';
+    const updated = `${newsContent.slice(0, start)}${opening}${selected}${closing}${newsContent.slice(end)}`;
+    setNewsContent(updated);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + opening.length, start + opening.length + selected.length);
+    });
+  };
+
+  const insertContentLink = (kind: 'article' | 'news') => {
+    const textarea = kind === 'article' ? articleContentInputRef.current : newsContentInputRef.current;
+    if (!textarea) return;
+    const currentText = kind === 'article' ? formContent : newsContent;
+    const setText = kind === 'article' ? setFormContent : setNewsContent;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = currentText.slice(start, end).trim();
+    const linkType = window.prompt('Collegamento a un sito web o a un articolo?\n1 = Sito web\n2 = Articolo del regolamento', '1');
+    if (!linkType) return;
+
+    let destination = '';
+    let defaultLabel = selectedText;
+    if (linkType.trim() === '2') {
+      const availableArticles = sections.flatMap(section =>
+        section.subsections.map((article: any) => ({ id: article.id, title: article.title, section: section.title }))
+      );
+      if (availableArticles.length === 0) return;
+      const choices = availableArticles.map((article, index) => `${index + 1}. ${article.title} — ${article.section}`).join('\n');
+      const choice = Number(window.prompt(`Inserisci il numero dell'articolo da collegare:\n${choices}`, '1'));
+      if (!Number.isInteger(choice) || choice < 1 || choice > availableArticles.length) return;
+      const article = availableArticles[choice - 1];
+      destination = `#article:${encodeURIComponent(article.id)}`;
+      defaultLabel ||= article.title;
+    } else {
+      const rawUrl = window.prompt('Inserisci l’indirizzo del sito web (https://...)');
+      if (!rawUrl?.trim()) return;
+      const withProtocol = /^https?:\/\//i.test(rawUrl.trim()) ? rawUrl.trim() : `https://${rawUrl.trim()}`;
+      try {
+        const parsedUrl = new URL(withProtocol);
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) return;
+        destination = parsedUrl.toString();
+        defaultLabel ||= parsedUrl.hostname;
+      } catch {
+        showToast('Indirizzo del sito non valido.');
+        return;
+      }
+    }
+    const label = window.prompt('Testo da mostrare per il collegamento:', defaultLabel) || defaultLabel;
+    const token = `[${label}](${destination})`;
+    const updated = `${currentText.slice(0, start)}${token}${currentText.slice(end)}`;
+    setText(updated);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
+  const openLinkedArticle = (articleId: string) => {
+    const target = sections.find(section => section.subsections.some((article: any) => article.id === articleId));
+    if (!target) return;
+    setActiveSectionId(target.id);
+    setActiveTabMode('rules');
+    setOpenAccordions(previous => ({ ...previous, [articleId]: true }));
+    window.setTimeout(() => document.getElementById(`article-${articleId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
   };
 
   const handleSaveSubsection = (e: React.FormEvent) => {
@@ -1321,7 +1502,7 @@ export default function FitaTaekwondoApp() {
                             <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-red-600" /> {item.date}</span>
                             {item.location && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-blue-600" /> {item.location}</span>}
                           </div>
-                          <p className="text-xs text-slate-600 leading-relaxed">{item.content}</p>
+                          <div className="whitespace-pre-line text-xs text-slate-600 leading-relaxed">{renderFormattedText(item.content, openLinkedArticle)}</div>
                         </div>
                       </div>
 
@@ -1462,7 +1643,7 @@ export default function FitaTaekwondoApp() {
                       const storedArticleIndex = currentSection.subsections.findIndex(article => article.id === sub.id);
 
                       return (
-                        <div key={sub.id} className={`rounded-xl border shadow-sm overflow-hidden ${isHiddenForUsers ? 'border-slate-300 bg-slate-100' : 'border-slate-200 bg-white'} ${selectedArticleIds.includes(sub.id) ? 'border-red-300 ring-1 ring-red-200' : ''}`}>
+                        <div id={`article-${sub.id}`} key={sub.id} className={`rounded-xl border shadow-sm overflow-hidden ${isHiddenForUsers ? 'border-slate-300 bg-slate-100' : 'border-slate-200 bg-white'} ${selectedArticleIds.includes(sub.id) ? 'border-red-300 ring-1 ring-red-200' : ''}`}>
                           <div
                             onClick={() => toggleAccordion(sub.id)}
                             className="p-3.5 sm:p-5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 select-none"
@@ -1540,7 +1721,7 @@ export default function FitaTaekwondoApp() {
                           {isOpen && (
                             <div className="p-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-700 leading-relaxed">
                               <div className={`whitespace-pre-line text-xs sm:text-sm ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
-                                {renderFormattedText(sub.content)}
+                                {renderFormattedText(sub.content, openLinkedArticle)}
                               </div>
 
                               {(sub as any).source?.trim() && (
@@ -1821,6 +2002,7 @@ export default function FitaTaekwondoApp() {
                       <button type="button" onClick={() => applyContentFormat('bold')} title="Grassetto" aria-label="Applica grassetto" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm font-black text-slate-700 hover:bg-slate-50">B</button>
                       <button type="button" onClick={() => applyContentFormat('italic')} title="Corsivo" aria-label="Applica corsivo" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm italic text-slate-700 hover:bg-slate-50">I</button>
                       <button type="button" onClick={() => applyContentFormat('underline')} title="Sottolineato" aria-label="Applica sottolineato" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm underline text-slate-700 hover:bg-slate-50">U</button>
+                      <button type="button" onClick={() => insertContentLink('article')} title="Inserisci collegamento a un articolo o sito web" className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><LinkIcon className="inline h-3.5 w-3.5" /> Link</button>
                       <button type="button" onClick={() => setFormContent(current => current + (current && !current.endsWith(String.fromCharCode(10)) ? String.fromCharCode(10) : '') + '• ')} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
                     </div>
                   </div>
@@ -1998,7 +2180,13 @@ export default function FitaTaekwondoApp() {
 
                 <div>
                   <label className="block text-slate-600 font-bold mb-1">Contenuto *</label>
-                  <textarea required rows={4} placeholder="Inserisci il testo completo..." value={newsContent} onChange={(e) => setNewsContent(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
+                  <div className="mb-1 flex flex-wrap items-center gap-1">
+                    <button type="button" onClick={() => applyNewsContentFormat('bold')} title="Grassetto" aria-label="Applica grassetto" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm font-black text-slate-700 hover:bg-slate-50">B</button>
+                    <button type="button" onClick={() => applyNewsContentFormat('italic')} title="Corsivo" aria-label="Applica corsivo" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm italic text-slate-700 hover:bg-slate-50">I</button>
+                    <button type="button" onClick={() => applyNewsContentFormat('underline')} title="Sottolineato" aria-label="Applica sottolineato" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm underline text-slate-700 hover:bg-slate-50">U</button>
+                    <button type="button" onClick={() => insertContentLink('news')} title="Inserisci collegamento a un articolo o sito web" className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><LinkIcon className="inline h-3.5 w-3.5" /> Link</button>
+                  </div>
+                  <textarea ref={newsContentInputRef} required rows={4} placeholder="Inserisci il testo completo..." value={newsContent} onChange={(e) => setNewsContent(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
                 </div>
 
                 <div>
