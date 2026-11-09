@@ -2184,7 +2184,7 @@ export default function FitaTaekwondoApp() {
                     <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500">Non ci sono ancora video in questa sezione.</div>
                   ) : (
                     <div className="space-y-6">
-                      {[...new Set(((currentSection as any).showcaseVideos || []).map((video: any) => String(video.group || '').trim() || 'Generale'))].map(groupName => {
+                      {Array.from(new Set<string>(((currentSection as any).showcaseVideos || []).map((video: any) => String(video.group || '').trim() || 'Generale'))).map(groupName => {
                         const groupVideos = ((currentSection as any).showcaseVideos || []).filter((video: any) => (String(video.group || '').trim() || 'Generale') === groupName);
                         return (
                           <section key={groupName} className="space-y-3">
