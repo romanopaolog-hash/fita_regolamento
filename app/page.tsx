@@ -416,6 +416,8 @@ export default function FitaTaekwondoApp() {
   const [docFormat, setDocFormat] = useState('PDF');
   const [docFileName, setDocFileName] = useState('');
   const [docUrl, setDocUrl] = useState('');
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const docFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -782,12 +784,30 @@ export default function FitaTaekwondoApp() {
     if (articleMediaInputRef.current) articleMediaInputRef.current.value = '';
   };
 
-  const handleDocFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setDocFileName(file.name);
-      setDocUrl(URL.createObjectURL(file));
-      setDocFormat(file.name.split('.').pop()?.toUpperCase() || 'PDF');
+    e.currentTarget.value = '';
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      showToast('Il file supera il limite di 4 MB.');
+      return;
+    }
+    setIsUploadingDoc(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch('/api/documents/media', { method: 'POST', body: formData, credentials: 'same-origin' });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || 'Impossibile caricare il documento.');
+      setDocFileName(result.fileName || file.name);
+      setDocUrl(result.url);
+      setDocFormat(result.format || file.name.split('.').pop()?.toUpperCase() || 'PDF');
+      setDocTitle(current => current.trim() || file.name.replace(/\\.[^.]+$/, ''));
+      showToast('Documento caricato.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossibile caricare il documento.');
+    } finally {
+      setIsUploadingDoc(false);
     }
   };
 
@@ -819,20 +839,26 @@ export default function FitaTaekwondoApp() {
   const handleSaveDocument = (e: React.FormEvent) => {
     e.preventDefault();
     if (!docTitle.trim()) return;
+    if (!docUrl.trim() || docUrl === '#') {
+      showToast('Carica un file o inserisci un collegamento web prima di salvare.');
+      return;
+    }
+    const extension = docFormat ? `.${docFormat.toLowerCase()}` : '';
+    const documentTitle = docTitle.trim().toLowerCase().endsWith(extension) ? docTitle.trim() : `${docTitle.trim()}${extension}`;
     const newDoc = {
       id: 'doc-' + Date.now(),
-      title: docTitle + (docFormat ? `.${docFormat.toLowerCase()}` : ''),
+      title: documentTitle,
       format: docFormat,
-      size: docFileName ? 'Locale (~2.5 MB)' : 'Esterno',
+      size: docFileName ? 'Caricato online' : 'Esterno',
       date: new Date().toLocaleDateString('it-IT'),
       description: docDescription,
-      url: docUrl || '#'
+      url: docUrl.trim()
     };
     setSections(prev =>
       prev.map(sec => sec.id === activeSectionId ? { ...sec, documents: [newDoc, ...(sec.documents || [])] } : sec)
     );
     setIsDocModalOpen(false);
-    setDocTitle(''); setDocDescription(''); setDocFileName(''); setDocUrl('');
+    setDocTitle(''); setDocDescription(''); setDocFileName(''); setDocUrl(''); setDocFormat('PDF');
     showToast('Documento salvato!');
   };
 
@@ -1832,7 +1858,10 @@ export default function FitaTaekwondoApp() {
                             download={doc.title}
                             className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1 shrink-0"
                             onClick={(e) => {
-                              if (doc.url === '#') { e.preventDefault(); showToast(`Download avviato!`); }
+                              if (!doc.url || doc.url === '#') {
+                                e.preventDefault();
+                                showToast('Questo documento non ha un file o un collegamento valido.');
+                              }
                             }}
                           >
                             <Download className="w-3.5 h-3.5" /> Scarica
@@ -2139,6 +2168,43 @@ export default function FitaTaekwondoApp() {
                 </div>
               </form>
             </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isDocModalOpen && user?.role === 'admin' && adminMode && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm">
+            <section className="w-full max-w-lg space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
+              <header className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <h2 className="text-base font-bold text-[#0B1B3D]">Carica documento</h2>
+                <button type="button" onClick={() => setIsDocModalOpen(false)} aria-label="Chiudi" className="rounded p-1 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+              </header>
+              <form onSubmit={handleSaveDocument} className="space-y-3">
+                <div>
+                  <label htmlFor="document-title" className="mb-1 block font-bold text-slate-600">Titolo *</label>
+                  <input id="document-title" required value={docTitle} onChange={e => setDocTitle(e.target.value)} placeholder="Es. Regolamento di gara" className="w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800" />
+                </div>
+                <div>
+                  <label htmlFor="document-description" className="mb-1 block font-bold text-slate-600">Descrizione</label>
+                  <textarea id="document-description" rows={2} value={docDescription} onChange={e => setDocDescription(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800" />
+                </div>
+                <div className="space-y-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
+                  <input ref={docFileInputRef} type="file" accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.txt" onChange={handleDocFileUpload} className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-[#0B1B3D] file:px-3 file:py-2 file:font-bold file:text-white" />
+                  <p className="text-[10px] text-slate-500">PDF, PowerPoint, Word, Excel o TXT · massimo 4 MB. Il file viene salvato online e resta disponibile dopo il refresh.</p>
+                  {isUploadingDoc && <p role="status" className="text-xs font-semibold text-blue-700">Caricamento in corso…</p>}
+                  {docFileName && <div className="flex items-center justify-between gap-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800"><span className="truncate">{docFileName}</span><button type="button" onClick={() => { setDocFileName(''); setDocUrl(''); if (docFileInputRef.current) docFileInputRef.current.value = ''; }} className="shrink-0 font-bold underline">Rimuovi file</button></div>}
+                </div>
+                <div>
+                  <label htmlFor="document-url" className="mb-1 block font-bold text-slate-600">Oppure collegamento web</label>
+                  <input id="document-url" type="url" value={docFileName ? '' : docUrl} onChange={e => setDocUrl(e.target.value)} disabled={!!docFileName} placeholder="https://..." className="w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800 disabled:opacity-50" />
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+                  <button type="button" onClick={() => setIsDocModalOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 font-bold text-slate-600">Annulla</button>
+                  <button type="submit" disabled={isUploadingDoc || !docUrl.trim()} className="rounded-lg bg-[#0B1B3D] px-4 py-2 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{isUploadingDoc ? 'Caricamento…' : 'Salva documento'}</button>
+                </div>
+              </form>
+            </section>
           </div>
         )}
       </AnimatePresence>
