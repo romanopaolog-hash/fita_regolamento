@@ -6,7 +6,8 @@ const MAX_BODY_SIZE = 2_000_000;
 
 type ArticleSection = {
   id: string;
-  subsections: Array<{ id: string; title: string; content: string }>;
+  hidden?: boolean;
+  subsections: Array<{ id: string; title: string; content: string; hidden?: boolean }>;
   [key: string]: unknown;
 };
 
@@ -46,8 +47,25 @@ function noStoreHeaders() {
 
 export async function GET() {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return Response.json({ error: 'Accesso richiesto.' }, { status: 401, headers: noStoreHeaders() });
+    }
+
+    const clerk = await clerkClient();
+    const currentUser = await clerk.users.getUser(userId);
+    const isAdmin = currentUser.publicMetadata.role === 'admin';
     const { sections, etag } = await readArticles();
-    return Response.json({ sections, etag }, { headers: noStoreHeaders() });
+    const visibleSections = isAdmin || !sections
+      ? sections
+      : sections
+        .filter(section => section.hidden !== true)
+        .map(section => ({
+          ...section,
+          subsections: section.subsections.filter(article => article.hidden !== true),
+        }));
+
+    return Response.json({ sections: visibleSections, etag }, { headers: noStoreHeaders() });
   } catch {
     return Response.json(
       { error: 'Impossibile leggere gli articoli condivisi.' },
