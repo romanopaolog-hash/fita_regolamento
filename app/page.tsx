@@ -1694,7 +1694,7 @@ export default function FitaTaekwondoApp() {
           <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-1.5 sm:px-6 lg:px-8">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden="true" />
             <p className="text-[10px] leading-relaxed sm:text-xs">
-              I contenuti sono stati elaborati con AI e revisionati da una persona, ma possono contenere errori: verifica le informazioni sul <a href="https://www.fita.it/" target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900">sito ufficiale FITA</a> e nei regolamenti aggiornati.
+              I contenuti sono stati elaborati con AI e revisionati da una persona, ma possono contenere errori: verifica le informazioni sul <a href="https://www.taekwondoitalia.it/" target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900">sito ufficiale FITA</a> e nei regolamenti aggiornati.
             </p>
           </div>
         </aside>
