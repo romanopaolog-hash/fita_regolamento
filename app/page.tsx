@@ -166,44 +166,77 @@ function renderFormattedText(content: string, onArticleLink?: (id: string) => vo
 }
 
 function renderRichContent(content: string, onArticleLink?: (id: string) => void): React.ReactNode[] {
-  type ContentBlock = { type: 'paragraph' | 'unordered' | 'ordered'; lines: string[] };
-  const blocks: ContentBlock[] = [];
-  let current: ContentBlock | null = null;
-  const flush = () => {
-    if (current) blocks.push(current);
-    current = null;
-  };
+  type ListItem = { text: string; children: ListBlock[] };
+  type ListBlock = { type: 'unordered' | 'ordered'; indent: number; start: number; items: ListItem[] };
+  type RenderBlock = { type: 'paragraph'; lines: string[] } | { type: 'list'; list: ListBlock };
+  const blocks: RenderBlock[] = [];
+  const listStack: Array<{ indent: number; list: ListBlock; container: ListBlock[] }> = [];
+  let paragraph: string[] | null = null;
 
   for (const line of content.split(/\r?\n/)) {
-    const unordered = line.match(/^\s*(?:[-*+•–—])\s+(.+)$/);
-    const ordered = line.match(/^\s*(?:\d+[.)]|[a-zA-Z][.)])\s+(.+)$/);
-    if (unordered || ordered) {
-      const type = unordered ? 'unordered' : 'ordered';
-      if (current && current.type !== type) {
-        blocks.push(current);
-        current = null;
+    const match = line.match(/^(\s*)([-*+•–—]|\d+[.)]|[a-zA-Z][.)])\s+(.+)$/);
+    if (match) {
+      if (paragraph) {
+        blocks.push({ type: 'paragraph', lines: paragraph });
+        paragraph = null;
       }
-      if (!current) current = { type, lines: [] };
-      current.lines.push((unordered || ordered)![1]);
-    } else if (!line.trim()) {
-      flush();
-    } else {
-      if (current?.type !== 'paragraph') flush();
-      if (!current) current = { type: 'paragraph', lines: [] };
-      current.lines.push(line);
-    }
-  }
-  flush();
+      const indent = match[1].replace(/\t/g, '    ').length;
+      const marker = match[2];
+      const listType = /^\d/.test(marker) || /^[a-zA-Z][.)]$/.test(marker) ? 'ordered' : 'unordered';
+      const numberStart = /^\d+/.test(marker) ? Number.parseInt(marker, 10) : 1;
 
-  return blocks.map((block, index) => {
-    if (block.type === 'unordered') {
-      return <ul key={index} className="my-2 list-disc space-y-1 pl-6 marker:text-slate-500">{block.lines.map((line, itemIndex) => <li key={itemIndex} className="pl-1">{renderFormattedText(line, onArticleLink)}</li>)}</ul>;
+      while (listStack.length > 0 && indent < listStack[listStack.length - 1].indent) listStack.pop();
+      let stackEntry = listStack[listStack.length - 1];
+      if (!stackEntry || indent > stackEntry.indent) {
+        const parentItem = stackEntry?.list.items[stackEntry.list.items.length - 1];
+        const container = parentItem ? parentItem.children : [];
+        const list: ListBlock = { type: listType, indent, start: numberStart, items: [] };
+        if (parentItem) container.push(list);
+        else blocks.push({ type: 'list', list });
+        stackEntry = { indent, list, container };
+        listStack.push(stackEntry);
+      } else if (stackEntry.list.type !== listType) {
+        const list: ListBlock = { type: listType, indent, start: numberStart, items: [] };
+        if (listStack.length === 1) blocks.push({ type: 'list', list });
+        else stackEntry.container.push(list);
+        stackEntry = { indent, list, container: stackEntry.container };
+        listStack[listStack.length - 1] = stackEntry;
+      }
+      stackEntry.list.items.push({ text: match[3], children: [] });
+      continue;
     }
-    if (block.type === 'ordered') {
-      return <ol key={index} className="my-2 list-decimal space-y-1 pl-6 marker:font-semibold marker:text-slate-500">{block.lines.map((line, itemIndex) => <li key={itemIndex} className="pl-1">{renderFormattedText(line, onArticleLink)}</li>)}</ol>;
+
+    if (!line.trim()) {
+      if (!listStack.length && paragraph) {
+        blocks.push({ type: 'paragraph', lines: paragraph });
+        paragraph = null;
+      }
+      continue;
     }
-    return <p key={index} className="my-1">{block.lines.map((line, lineIndex) => <React.Fragment key={lineIndex}>{lineIndex > 0 && <br />}{renderFormattedText(line, onArticleLink)}</React.Fragment>)}</p>;
-  });
+
+    if (listStack.length) listStack.length = 0;
+    if (!paragraph) paragraph = [];
+    paragraph.push(line);
+  }
+
+  if (paragraph) blocks.push({ type: 'paragraph', lines: paragraph });
+
+  const renderList = (list: ListBlock, key: string): React.ReactNode => {
+    const items = list.items.map((item, index) => (
+      <li key={index} className="pl-1">
+        {renderFormattedText(item.text, onArticleLink)}
+        {item.children.map((child, childIndex) => renderList(child, `${key}-${index}-${childIndex}`))}
+      </li>
+    ));
+    return list.type === 'ordered'
+      ? <ol key={key} start={list.start} className="my-1 list-decimal space-y-1 pl-6 marker:font-semibold marker:text-slate-500">{items}</ol>
+      : <ul key={key} className="my-1 list-disc space-y-1 pl-6 marker:text-slate-500">{items}</ul>;
+  };
+
+  return blocks.map((block, index) => block.type === 'list'
+    ? renderList(block.list, `list-${index}`)
+    : <p key={index} className="my-1">{block.lines.map((line, lineIndex) => <React.Fragment key={lineIndex}>{lineIndex > 0 && <br />}{renderFormattedText(line, onArticleLink)}</React.Fragment>)}</p>
+  );
 }
 
 function reconcileNewsLists(cloudNews: any[], deviceNews: any[], lastSyncedNews: any[]) {
