@@ -91,6 +91,22 @@ function parseBulkArticles(source: string) {
   return { articles, errors };
 }
 
+function renderFormattedText(content: string): React.ReactNode[] {
+  const formattedToken = /(\*\*[\s\S]+?\*\*|\*[^*\n]+\*|<u>[\s\S]+?<\/u>)/g;
+  return content.split(formattedToken).map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return <strong key={index}>{renderFormattedText(part.slice(2, -2))}</strong>;
+    }
+    if (part.startsWith('<u>') && part.endsWith('</u>') && part.length > 7) {
+      return <u key={index}>{renderFormattedText(part.slice(3, -4))}</u>;
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={index}>{renderFormattedText(part.slice(1, -1))}</em>;
+    }
+    return <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+}
+
 // --- DATI DI DEFAULT ---
 const DEFAULT_NEWS = [
   {
@@ -324,6 +340,7 @@ export default function FitaTaekwondoApp() {
   const [formSectionId, setFormSectionId] = useState('kyorugi');
   const [formTitle, setFormTitle] = useState('');
   const [formContent, setFormContent] = useState('');
+  const articleContentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [formTags, setFormTags] = useState('');
   const [formSource, setFormSource] = useState('');
   const [mediaSourceType, setMediaSourceType] = useState<'url' | 'file'>('file');
@@ -718,6 +735,27 @@ export default function FitaTaekwondoApp() {
       prev.map(sec => sec.id === secId ? { ...sec, documents: sec.documents.filter(d => d.id !== docId) } : sec)
     );
     showToast('Documento rimosso.');
+  };
+
+  const applyContentFormat = (format: 'bold' | 'italic' | 'underline') => {
+    const textarea = articleContentInputRef.current;
+    if (!textarea) return;
+
+    const formats = {
+      bold: ['**', '**'],
+      italic: ['*', '*'],
+      underline: ['<u>', '</u>'],
+    } as const;
+    const [opening, closing] = formats[format];
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = formContent.slice(start, end) || 'testo';
+    const updated = `${formContent.slice(0, start)}${opening}${selected}${closing}${formContent.slice(end)}`;
+    setFormContent(updated);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + opening.length, start + opening.length + selected.length);
+    });
   };
 
   const handleSaveSubsection = (e: React.FormEvent) => {
@@ -1419,7 +1457,7 @@ export default function FitaTaekwondoApp() {
                           {isOpen && (
                             <div className="p-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-700 leading-relaxed">
                               <div className="whitespace-pre-line text-xs sm:text-sm text-slate-800">
-                                {sub.content}
+                                {renderFormattedText(sub.content)}
                               </div>
 
                               {(sub as any).source?.trim() && (
@@ -1659,11 +1697,16 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 <div>
-                  <div className="mb-1 flex items-center justify-between gap-2">
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                     <label htmlFor="article-content" className="block text-slate-600 font-bold">Contenuto *</label>
-                    <button type="button" onClick={() => setFormContent(current => `${current}${current && !current.endsWith('\n') ? '\n' : ''}• `)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <button type="button" onClick={() => applyContentFormat('bold')} title="Grassetto" aria-label="Applica grassetto" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm font-black text-slate-700 hover:bg-slate-50">B</button>
+                      <button type="button" onClick={() => applyContentFormat('italic')} title="Corsivo" aria-label="Applica corsivo" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm italic text-slate-700 hover:bg-slate-50">I</button>
+                      <button type="button" onClick={() => applyContentFormat('underline')} title="Sottolineato" aria-label="Applica sottolineato" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm underline text-slate-700 hover:bg-slate-50">U</button>
+                      <button type="button" onClick={() => setFormContent(current => current + (current && !current.endsWith(String.fromCharCode(10)) ? String.fromCharCode(10) : '') + '• ')} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
+                    </div>
                   </div>
-                  <textarea id="article-content" required rows={9} value={formContent} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
+                  <textarea ref={articleContentInputRef} id="article-content" required rows={9} value={formContent} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
                   <p className="mt-1 text-[10px] text-slate-500">Usa il pulsante per aggiungere righe con punti elenco; vai a capo per continuare l’elenco.</p>
                 </div>
 
