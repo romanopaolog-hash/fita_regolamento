@@ -62,7 +62,7 @@ const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regol
 
 Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. Il campo Titolo deve contenere solo l'argomento specifico: non inserire numeri o diciture come “Articolo 1”, “Articolo 2” o “Articolo 1 - ...”. Se la fonte è un regolamento ufficiale, nel campo Fonte cita il numero o riferimento dell'articolo originale solo quando è chiaramente presente nel materiale. Non inventare numeri o riferimenti; se non sono presenti, lascia Fonte vuota oppure indica soltanto il nome della fonte fornita.
 
-Quando il contenuto richiede un elenco, usa il formato riconosciuto dal sito: per i punti elenco scrivi ESATTAMENTE “- ” all'inizio di ogni elemento; per un elenco numerato scrivi “1. ”, “2. ”, “3. ” e continua la numerazione in ordine. Metti ogni elemento su una riga separata e lascia una riga vuota prima e dopo l'elenco. Il sito mostrerà questi elementi come un vero elenco puntato o numerato. Non usare simboli, numerazioni, rientri o formati alternativi, e non mettere più elementi sulla stessa riga. Usa un elenco solo se la fonte lo giustifica. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
+Quando il contenuto richiede un elenco, usa il formato riconosciuto dal sito: per i punti elenco scrivi ESATTAMENTE “- ” all'inizio di ogni elemento; per un elenco numerato scrivi “1. ”, “2. ”, “3. ” e continua la numerazione in ordine. Metti ogni elemento su una riga separata e lascia una riga vuota prima e dopo l'elenco. Il sito mostrerà questi elementi come un vero elenco puntato o numerato. Non usare simboli, numerazioni, rientri o formati alternativi, e non mettere più elementi sulla stessa riga. Usa un elenco solo se la fonte lo giustifica. Se una linea separatrice aiuta la lettura, scrivi esattamente --- da solo su una riga: il sito lo mostra come una linea sottile. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
 
 ${BULK_ARTICLE_TEMPLATE}`;
 
@@ -168,12 +168,21 @@ function renderFormattedText(content: string, onArticleLink?: (id: string) => vo
 function renderRichContent(content: string, onArticleLink?: (id: string) => void): React.ReactNode[] {
   type ListItem = { text: string; children: ListBlock[] };
   type ListBlock = { type: 'unordered' | 'ordered'; indent: number; start: number; items: ListItem[] };
-  type RenderBlock = { type: 'paragraph'; lines: string[] } | { type: 'list'; list: ListBlock };
+  type RenderBlock = { type: 'paragraph'; lines: string[] } | { type: 'list'; list: ListBlock } | { type: 'divider' };
   const blocks: RenderBlock[] = [];
   const listStack: Array<{ indent: number; list: ListBlock; container: ListBlock[] }> = [];
   let paragraph: string[] | null = null;
 
   for (const line of content.split(/\r?\n/)) {
+    if (/^---{1,}$/.test(line.trim())) {
+      if (paragraph) {
+        blocks.push({ type: 'paragraph', lines: paragraph });
+        paragraph = null;
+      }
+      listStack.length = 0;
+      blocks.push({ type: 'divider' });
+      continue;
+    }
     const match = line.match(/^(\s*)([-*+•–—]|\d+[.)]|[a-zA-Z][.)])\s+(.+)$/);
     if (match) {
       if (paragraph) {
@@ -233,9 +242,11 @@ function renderRichContent(content: string, onArticleLink?: (id: string) => void
       : <ul key={key} className="my-1 list-disc space-y-1 pl-6 marker:text-slate-500">{items}</ul>;
   };
 
-  return blocks.map((block, index) => block.type === 'list'
-    ? renderList(block.list, `list-${index}`)
-    : <p key={index} className="my-1">{block.lines.map((line, lineIndex) => <React.Fragment key={lineIndex}>{lineIndex > 0 && <br />}{renderFormattedText(line, onArticleLink)}</React.Fragment>)}</p>
+  return blocks.map((block, index) => block.type === 'divider'
+    ? <hr key={index} aria-hidden="true" className="my-4 border-0 border-t border-slate-300" />
+    : block.type === 'list'
+      ? renderList(block.list, `list-${index}`)
+      : <p key={index} className="my-1">{block.lines.map((line, lineIndex) => <React.Fragment key={lineIndex}>{lineIndex > 0 && <br />}{renderFormattedText(line, onArticleLink)}</React.Fragment>)}</p>
   );
 }
 
@@ -2229,6 +2240,7 @@ export default function FitaTaekwondoApp() {
                       <button type="button" onClick={() => applyContentFormat('underline')} title="Sottolineato" aria-label="Applica sottolineato" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm underline text-slate-700 hover:bg-slate-50">U</button>
                       <button type="button" onClick={() => insertContentLink('article')} title="Inserisci collegamento a un articolo o sito web" className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><LinkIcon className="inline h-3.5 w-3.5" /> Link</button>
                       <button type="button" onClick={() => setFormContent(current => current + (current && !current.endsWith(String.fromCharCode(10)) ? String.fromCharCode(10) : '') + '• ')} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
+                      <button type="button" onClick={() => setFormContent(current => `${current.trimEnd()}${current.trim() ? '\n\n' : ''}---\n\n`)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Separatore</button>
                     </div>
                   </div>
                   <textarea ref={articleContentInputRef} id="article-content" required rows={9} value={formContent} onKeyDown={handleArticleContentKeyDown} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
