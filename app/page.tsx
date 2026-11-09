@@ -179,7 +179,10 @@ function renderRichContent(content: string, onArticleLink?: (id: string) => void
     const ordered = line.match(/^\s*(?:\d+[.)]|[a-zA-Z][.)])\s+(.+)$/);
     if (unordered || ordered) {
       const type = unordered ? 'unordered' : 'ordered';
-      if (current?.type !== type) flush();
+      if (current && current.type !== type) {
+        blocks.push(current);
+        current = null;
+      }
       if (!current) current = { type, lines: [] };
       current.lines.push((unordered || ordered)![1]);
     } else if (!line.trim()) {
