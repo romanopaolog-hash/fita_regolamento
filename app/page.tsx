@@ -1294,6 +1294,8 @@ export default function FitaTaekwondoApp() {
     const matchesFav = showOnlyFavorites ? favorites.includes(sub.id) : true;
     return matchesSearch && matchesFav;
   }).sort((a, b) => {
+    const hiddenOrder = Number((a as any).hidden === true) - Number((b as any).hidden === true);
+    if (hiddenOrder !== 0) return hiddenOrder;
     if (articleSort === 'title-asc') return a.title.localeCompare(b.title, 'it', { sensitivity: 'base' });
     if (articleSort === 'title-desc') return b.title.localeCompare(a.title, 'it', { sensitivity: 'base' });
     if (articleSort === 'date-asc' || articleSort === 'date-desc') {
