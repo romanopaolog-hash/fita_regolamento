@@ -36,6 +36,9 @@ import {
   CheckSquare,
   Square,
   ShieldCheck,
+  Eye,
+  EyeOff,
+  ArrowRightLeft,
   Pin
 } from 'lucide-react';
 
@@ -334,6 +337,8 @@ export default function FitaTaekwondoApp() {
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [movingArticle, setMovingArticle] = useState<{ id: string; title: string; sourceSectionId: string } | null>(null);
+  const [moveTargetSectionId, setMoveTargetSectionId] = useState('');
 
   // Form Articoli / News / Documenti
   const [editingSubsection, setEditingSubsection] = useState<any | null>(null);
@@ -920,6 +925,33 @@ export default function FitaTaekwondoApp() {
     }));
   };
 
+  const handleMoveArticleToSection = () => {
+    if (!movingArticle || !moveTargetSectionId || moveTargetSectionId === movingArticle.sourceSectionId) return;
+    const sourceSection = sections.find(section => section.id === movingArticle.sourceSectionId);
+    const targetSection = sections.find(section => section.id === moveTargetSectionId);
+    const article = sourceSection?.subsections.find(sub => sub.id === movingArticle.id);
+    if (!sourceSection || !targetSection || !article) {
+      showToast('Impossibile spostare l’articolo. Aggiorna la pagina e riprova.');
+      return;
+    }
+
+    setSections(prev => prev.map(section => {
+      if (section.id === movingArticle.sourceSectionId) {
+        return { ...section, subsections: section.subsections.filter(sub => sub.id !== movingArticle.id) };
+      }
+      if (section.id === moveTargetSectionId) {
+        return { ...section, subsections: [...section.subsections, article] };
+      }
+      return section;
+    }));
+    setSelectedArticleIds(prev => prev.filter(id => id !== movingArticle.id));
+    setActiveSectionId(moveTargetSectionId);
+    setActiveTabMode('rules');
+    setOpenAccordions(prev => ({ ...prev, [movingArticle.id]: true }));
+    setMovingArticle(null);
+    showToast(`Articolo spostato in “${targetSection.title}”.`);
+  };
+
   const handleMoveSubsection = (sectionId: string, articleId: string, direction: -1 | 1) => {
     setSections(prev => prev.map(section => {
       if (section.id !== sectionId) return section;
@@ -1426,10 +1458,11 @@ export default function FitaTaekwondoApp() {
                     filteredSubsections.map((sub) => {
                       const isOpen = openAccordions[sub.id] ?? false;
                       const isFav = favorites.includes(sub.id);
+                      const isHiddenForUsers = (sub as any).hidden === true;
                       const storedArticleIndex = currentSection.subsections.findIndex(article => article.id === sub.id);
 
                       return (
-                        <div key={sub.id} className={`bg-white rounded-xl border shadow-sm overflow-hidden ${selectedArticleIds.includes(sub.id) ? 'border-red-300 ring-1 ring-red-200' : 'border-slate-200'}`}>
+                        <div key={sub.id} className={`rounded-xl border shadow-sm overflow-hidden ${isHiddenForUsers ? 'border-slate-300 bg-slate-100' : 'border-slate-200 bg-white'} ${selectedArticleIds.includes(sub.id) ? 'border-red-300 ring-1 ring-red-200' : ''}`}>
                           <div
                             onClick={() => toggleAccordion(sub.id)}
                             className="p-3.5 sm:p-5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 select-none"
@@ -1450,7 +1483,10 @@ export default function FitaTaekwondoApp() {
                                 <BookOpen className="w-4 h-4" />
                               </div>
                               <div>
-                                <h3 className="text-xs sm:text-base font-bold text-[#0B1B3D]">{sub.title}</h3>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h3 className={`text-xs sm:text-base font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
+                                  {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
+                                </div>
                                 {sub.tags && (
                                   <div className="flex flex-wrap gap-1 mt-0.5">
                                     {sub.tags.map((tag, idx) => (
@@ -1477,7 +1513,17 @@ export default function FitaTaekwondoApp() {
                                 <div className="flex items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
                                   <button type="button" disabled={storedArticleIndex === 0} onClick={() => handleMoveSubsection(currentSection.id, sub.id, -1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in alto" aria-label={`Sposta ${sub.title} in alto`}>↑</button>
                                   <button type="button" disabled={storedArticleIndex === currentSection.subsections.length - 1} onClick={() => handleMoveSubsection(currentSection.id, sub.id, 1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in basso" aria-label={`Sposta ${sub.title} in basso`}>↓</button>
-                                  <button type="button" onClick={() => toggleArticleVisibility(currentSection.id, sub.id)} className="rounded px-1.5 py-0.5 text-amber-700 hover:bg-amber-50" title={(sub as any).hidden ? 'Mostra agli utenti' : 'Nascondi agli utenti'}>{(sub as any).hidden ? 'Mostra' : 'Nascondi'}</button>
+                                  <button type="button" onClick={() => toggleArticleVisibility(currentSection.id, sub.id)} className={`rounded p-1.5 ${isHiddenForUsers ? 'text-slate-500 hover:bg-slate-200' : 'text-slate-600 hover:bg-slate-100'}`} title={isHiddenForUsers ? 'Mostra agli utenti' : 'Nascondi agli utenti'} aria-label={isHiddenForUsers ? `Mostra ${sub.title} agli utenti` : `Nascondi ${sub.title} agli utenti`}>
+                                    {isHiddenForUsers ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </button>
+                                  {sections.length > 1 && (
+                                    <button type="button" onClick={() => {
+                                      setMovingArticle({ id: sub.id, title: sub.title, sourceSectionId: currentSection.id });
+                                      setMoveTargetSectionId(sections.find(section => section.id !== currentSection.id)?.id || '');
+                                    }} className="rounded p-1.5 text-slate-600 hover:bg-slate-100" title="Sposta in un’altra sezione" aria-label={`Sposta ${sub.title} in un’altra sezione`}>
+                                      <ArrowRightLeft className="h-4 w-4" />
+                                    </button>
+                                  )}
                                   <button onClick={() => handleEditClick(sub, currentSection.id)} className="p-1 text-blue-600" aria-label={`Modifica ${sub.title}`}>
                                     <Edit3 className="w-3.5 h-3.5" />
                                   </button>
@@ -1493,7 +1539,7 @@ export default function FitaTaekwondoApp() {
 
                           {isOpen && (
                             <div className="p-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-700 leading-relaxed">
-                              <div className="whitespace-pre-line text-xs sm:text-sm text-slate-800">
+                              <div className={`whitespace-pre-line text-xs sm:text-sm ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
                                 {renderFormattedText(sub.content)}
                               </div>
 
@@ -1706,6 +1752,41 @@ export default function FitaTaekwondoApp() {
                 </button>
               </form>
             </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- SPOSTA ARTICOLO IN UN’ALTRA SEZIONE --- */}
+      <AnimatePresence>
+        {movingArticle && user && user.role === 'admin' && adminMode && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm">
+            <section className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                <div>
+                  <h2 className="text-base font-black text-[#0B1B3D]">Sposta articolo</h2>
+                  <p className="mt-1 text-xs text-slate-500">{movingArticle.title}</p>
+                </div>
+                <button type="button" onClick={() => setMovingArticle(null)} className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Chiudi">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <form onSubmit={e => { e.preventDefault(); handleMoveArticleToSection(); }} className="space-y-4">
+                <div>
+                  <label htmlFor="article-move-target" className="mb-1 block text-xs font-bold text-slate-600">Sezione di destinazione</label>
+                  <select id="article-move-target" required value={moveTargetSectionId} onChange={e => setMoveTargetSectionId(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-800">
+                    {sections.filter(section => section.id !== movingArticle.sourceSectionId).map(section => (
+                      <option key={section.id} value={section.id}>{section.title}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+                  <button type="button" onClick={() => setMovingArticle(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">Annulla</button>
+                  <button type="submit" className="inline-flex items-center gap-1.5 rounded-lg bg-[#0B1B3D] px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">
+                    <ArrowRightLeft className="h-3.5 w-3.5" /> Sposta articolo
+                  </button>
+                </div>
+              </form>
+            </section>
           </div>
         )}
       </AnimatePresence>
