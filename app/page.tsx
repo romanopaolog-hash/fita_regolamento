@@ -398,6 +398,7 @@ export default function FitaTaekwondoApp() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [articleSort, setArticleSort] = useState<'custom' | 'title-asc' | 'title-desc' | 'date-asc' | 'date-desc' | 'favorites-first'>('custom');
+  const [prioritizeSuggested, setPrioritizeSuggested] = useState(true);
   const [bulkImportReviewItems, setBulkImportReviewItems] = useState<Array<{ article: any; matches: Array<{ title: string; section: string; score: number }>; include: boolean }> | null>(null);
   const [selectedNewsCategory, setSelectedNewsCategory] = useState<string>('Tutti');
 
@@ -436,7 +437,6 @@ export default function FitaTaekwondoApp() {
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
-  const [documentPreview, setDocumentPreview] = useState<any | null>(null);
   const [movingArticle, setMovingArticle] = useState<{ id: string; title: string; sourceSectionId: string } | null>(null);
   const [moveTargetSectionId, setMoveTargetSectionId] = useState('');
 
@@ -1088,6 +1088,7 @@ export default function FitaTaekwondoApp() {
       id: editingSubsection ? editingSubsection.id : 'sub_' + Date.now(),
       addedAt: (editingSubsection as any)?.addedAt ?? new Date().toISOString(),
       hidden: (editingSubsection as any)?.hidden ?? false,
+      suggested: (editingSubsection as any)?.suggested ?? false,
       title: formTitle,
       content: formContent,
       source: formSource.trim(),
@@ -1296,6 +1297,11 @@ export default function FitaTaekwondoApp() {
   }).sort((a, b) => {
     const hiddenOrder = Number((a as any).hidden === true) - Number((b as any).hidden === true);
     if (hiddenOrder !== 0) return hiddenOrder;
+    if (prioritizeSuggested) {
+      const rank = (item: any) => favorites.includes(item.id) ? 0 : item.suggested === true ? 1 : 2;
+      const priorityOrder = rank(a) - rank(b);
+      if (priorityOrder !== 0) return priorityOrder;
+    }
     if (articleSort === 'title-asc') return a.title.localeCompare(b.title, 'it', { sensitivity: 'base' });
     if (articleSort === 'title-desc') return b.title.localeCompare(a.title, 'it', { sensitivity: 'base' });
     if (articleSort === 'date-asc' || articleSort === 'date-desc') {
@@ -1712,6 +1718,7 @@ export default function FitaTaekwondoApp() {
                           <option value="favorites-first">Preferiti per primi</option>
                         </select>
                       </label>
+                      <label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={prioritizeSuggested} onChange={e => setPrioritizeSuggested(e.target.checked)} className="accent-amber-600" /> Preferiti e suggeriti in cima</label>
                       {isSelectingArticles && <span className="font-semibold text-[#0B1B3D]">{selectedArticleIds.length} selezionati</span>}
                     </div>
 
@@ -1800,7 +1807,7 @@ export default function FitaTaekwondoApp() {
                                   <span className="text-[10px] font-medium text-slate-400">
                                     {(sub as any).addedAt ? `Aggiunto a ${new Date((sub as any).addedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}` : 'Data di inserimento non disponibile'}
                                   </span>
-                                  {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
+                                  {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}{(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
                                 </div>
                                 {sub.tags && (
                                   <div className="flex flex-wrap gap-1 mt-0.5">
@@ -1871,9 +1878,9 @@ export default function FitaTaekwondoApp() {
                                   </h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {sub.media.map((item, mIdx) => (
-                                      <div key={mIdx} className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                                      <div key={mIdx} className="flex justify-center bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
                                         {item.type === 'image' ? (
-                                          <img src={item.url} alt={item.caption || 'Media'} className="w-full aspect-video object-cover" />
+                                          <img src={item.url} alt={item.caption || 'Media'} className="block h-auto max-h-[70vh] w-auto max-w-full object-contain" />
                                         ) : (
                                           <div
                                             onClick={() => setActiveVideoModal({ url: item.url, caption: item.caption || '', title: sub.title })}
@@ -1927,7 +1934,6 @@ export default function FitaTaekwondoApp() {
                             <h4 className="font-bold text-xs sm:text-sm text-[#0B1B3D]">{doc.title}</h4>
                           </div>
 
-                          <button type="button" onClick={() => setDocumentPreview(doc)} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100">Anteprima</button>
                           <a
                             href={doc.url}
                             download={doc.title}
@@ -2161,6 +2167,7 @@ export default function FitaTaekwondoApp() {
                   <input id="article-title" type="text" required value={formTitle} onChange={(e) => setFormTitle(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 focus:outline-none focus:border-[#0B1B3D]" />
                 </div>
 
+                <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900"><input type="checkbox" checked={!!(editingSubsection as any)?.suggested} onChange={e => setEditingSubsection((current: any) => ({ ...(current || {}), suggested: e.target.checked }))} /> Articolo suggerito</label>
                 <div>
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                     <label htmlFor="article-content" className="block text-slate-600 font-bold">Contenuto *</label>
@@ -2248,17 +2255,6 @@ export default function FitaTaekwondoApp() {
                 </div>
               </form>
             </div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {documentPreview && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-3">
-            <section className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-              <header className="flex items-center justify-between gap-3 border-b p-4"><h2 className="truncate font-bold">{documentPreview.title}</h2><button type="button" onClick={() => setDocumentPreview(null)} aria-label="Chiudi anteprima"><X className="h-5 w-5" /></button></header>
-              {/\.pdf(?:$|[?#])/i.test(documentPreview.title) ? <iframe title={documentPreview.title} src={`${documentPreview.url}${documentPreview.url.includes('?') ? '&' : '?'}preview=1`} className="min-h-0 flex-1" /> : <div className="m-auto p-8 text-center">Anteprima integrata disponibile per i PDF. Scarica questo file per visualizzarlo.</div>}
-            </section>
           </div>
         )}
       </AnimatePresence>
