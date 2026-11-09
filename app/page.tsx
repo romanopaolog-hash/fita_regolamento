@@ -174,29 +174,6 @@ function reconcileNewsLists(cloudNews: any[], deviceNews: any[], lastSyncedNews:
 }
 
 // --- DATI DI DEFAULT ---
-const DEFAULT_NEWS = [
-  {
-    id: 'news-1',
-    title: 'Campionato Regionale Kyorugi Campania 2026 - Iscrizioni e Orari',
-    category: 'Regionale',
-    date: '15 Novembre 2026',
-    location: 'PalaVesuvio - Napoli',
-    content: 'Pubblicati gli orari delle operazioni di peso e il sorteggio dei tabelloni per tutte le categorie Cadetti, Junior e Senior. Si ricorda a tutti i convocati arbitrali di presentarsi entro le ore 08:00.',
-    image: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?auto=format&fit=crop&q=80&w=800',
-    isPinned: true
-  },
-  {
-    id: 'news-2',
-    title: 'Aggiornamento Direttive Video Replay (VR) World Taekwondo 2026',
-    category: 'Regolamento',
-    date: '02 Novembre 2026',
-    location: 'Nazionale',
-    content: 'Emanata la circolare con i nuovi chiarimenti riguardanti la tempistica di alzata del cartellino da parte del coach ed il protocollo di revisione per calci impattanti al corpetto.',
-    image: null,
-    isPinned: false
-  }
-];
-
 const DEFAULT_SECTIONS = [
   {
     id: 'kyorugi',
@@ -359,7 +336,7 @@ export default function FitaTaekwondoApp() {
   const articleSyncEtagRef = useRef<string | null>(null);
   const lastSyncedSectionsRef = useRef<string | null>(null);
   const articleSyncAvailableRef = useRef(false);
-  const [newsList, setNewsList] = useState(DEFAULT_NEWS);
+  const [newsList, setNewsList] = useState<any[]>([]);
   const [isNewsLoaded, setIsNewsLoaded] = useState(false);
   const newsSyncEtagRef = useRef<string | null>(null);
   const lastSyncedNewsRef = useRef<string | null>(null);
@@ -462,14 +439,7 @@ export default function FitaTaekwondoApp() {
     // Remove the old per-device secret; admin access is checked by Clerk on the server.
     localStorage.removeItem('tkd_article_sync_key');
 
-    let deviceNews: any[] = DEFAULT_NEWS;
-    const savedNews = localStorage.getItem('tkd_news');
-    if (savedNews) {
-      try {
-        const parsedNews = JSON.parse(savedNews);
-        if (Array.isArray(parsedNews)) deviceNews = parsedNews;
-      } catch {}
-    }
+    localStorage.removeItem('tkd_news');
     fetch('/api/news', { cache: 'no-store' })
       .then(async response => {
         if (!response.ok) throw new Error('Shared news unavailable');
@@ -480,7 +450,7 @@ export default function FitaTaekwondoApp() {
         newsSyncAvailableRef.current = true;
         newsSyncEtagRef.current = result.etag ?? null;
         const sharedNews = Array.isArray(result.news) ? result.news : null;
-        const resolvedNews = sharedNews ?? deviceNews;
+        const resolvedNews = sharedNews ?? [];
         lastSyncedNewsRef.current = sharedNews ? JSON.stringify(sharedNews) : null;
         setNewsList(resolvedNews);
         setIsNewsLoaded(true);
@@ -488,9 +458,9 @@ export default function FitaTaekwondoApp() {
       .catch(() => {
         if (!active) return;
         newsSyncAvailableRef.current = false;
-        setNewsList(deviceNews);
+        setNewsList([]);
         setIsNewsLoaded(true);
-        showToast('Archivio news condiviso non raggiungibile: le notizie restano disponibili su questo dispositivo.');
+        showToast('Archivio news condiviso non raggiungibile. Riprova tra poco.');
       });
     const savedFavs = localStorage.getItem('tkd_favorites');
     if (savedFavs) { try { setFavorites(JSON.parse(savedFavs)); } catch (e) {} }
@@ -1511,7 +1481,11 @@ export default function FitaTaekwondoApp() {
                 </div>
               </div>
 
-              {filteredNews.length === 0 ? (
+              {!isNewsLoaded ? (
+                <div className="bg-white p-8 text-center rounded-xl border border-slate-200 text-slate-500 font-semibold text-xs">
+                  Caricamento notizie…
+                </div>
+              ) : filteredNews.length === 0 ? (
                 <div className="bg-white p-8 text-center rounded-xl border border-slate-200 text-slate-500 font-semibold text-xs">
                   Nessuna notizia disponibile.
                 </div>
@@ -1721,7 +1695,7 @@ export default function FitaTaekwondoApp() {
                                 <div className="flex flex-wrap items-center gap-2">
                                   <h3 className={`text-xs sm:text-base font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
                                   <span className="text-[10px] font-medium text-slate-400">
-                                    {(sub as any).addedAt ? `Aggiunto a ${new Date((sub as any).addedAt).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}` : 'Data di inserimento non disponibile'}
+                                    {(sub as any).addedAt ? `Aggiunto a ${new Date((sub as any).addedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}` : 'Data di inserimento non disponibile'}
                                   </span>
                                   {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
                                 </div>
