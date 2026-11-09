@@ -58,7 +58,11 @@ Testo:
 Testo completo dell'articolo.
 === FINE ARTICOLO ===`;
 
-const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regolamento. Usa solo informazioni presenti nel materiale, conserva numeri, condizioni ed eccezioni, non inventare contenuti. Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. Il campo Titolo deve contenere solo l'argomento specifico: non inserire numeri o diciture come “Articolo 1”, “Articolo 2” o “Articolo 1 - ...”. Se la fonte è un regolamento ufficiale, nel campo Fonte cita il numero o riferimento dell'articolo originale solo quando è chiaramente presente nel materiale. Non inventare numeri o riferimenti; se non sono presenti, lascia Fonte vuota oppure indica soltanto il nome della fonte fornita. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
+const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regolamento. Le descrizioni devono essere ampie e dettagliate, ma ogni informazione deve essere esplicitamente supportata dal materiale: non inventare, non dedurre, non completare con conoscenze esterne. Questa regola è fondamentale. Se un dato, un requisito o un'eccezione non è presente o non è leggibile con certezza, omettilo; non indovinare. Mantieni fedelmente numeri, condizioni, eccezioni, unità di misura, termini e ambito di applicazione. Non sintetizzare al punto da perdere dettagli rilevanti.
+
+Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. Il campo Titolo deve contenere solo l'argomento specifico: non inserire numeri o diciture come “Articolo 1”, “Articolo 2” o “Articolo 1 - ...”. Se la fonte è un regolamento ufficiale, nel campo Fonte cita il numero o riferimento dell'articolo originale solo quando è chiaramente presente nel materiale. Non inventare numeri o riferimenti; se non sono presenti, lascia Fonte vuota oppure indica soltanto il nome della fonte fornita.
+
+Quando il contenuto richiede un elenco, scrivi ogni elemento su una riga separata usando ESATTAMENTE “- ” all'inizio per gli elenchi puntati oppure “1. ”, “2. ”, “3. ” (numerazione progressiva) per quelli numerati. Non usare simboli alternativi, tabulazioni o elenchi sulla stessa riga. Lascia una riga vuota prima e dopo l'elenco. Usa un elenco solo quando i contenuti della fonte lo giustificano. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
 
 ${BULK_ARTICLE_TEMPLATE}`;
 
@@ -130,7 +134,7 @@ function findSimilarArticles(article: { title: string; tags?: string[] }, existi
 }
 
 function renderFormattedText(content: string, onArticleLink?: (id: string) => void): React.ReactNode[] {
-  const formattedToken = /(\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<]+|\*\*[\s\S]+?\*\*|\*[^*\n]+\*|<u>[\s\S]+?<\/u>)/gi;
+  const formattedToken = /(\[[^\]]+\]\([^\s)]+\)|https?:\/\/[^\s<]+|\*\*[\s\S]+?\*\*|\*[^*\n]+\*|<u>[\s\S]+?<\/u>)/gi;
   return content.split(formattedToken).map((part, index) => {
     const markdownLink = part.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/);
     if (markdownLink) {
@@ -158,6 +162,44 @@ function renderFormattedText(content: string, onArticleLink?: (id: string) => vo
       return <em key={index}>{renderFormattedText(part.slice(1, -1), onArticleLink)}</em>;
     }
     return <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+}
+
+function renderRichContent(content: string, onArticleLink?: (id: string) => void): React.ReactNode[] {
+  type ContentBlock = { type: 'paragraph' | 'unordered' | 'ordered'; lines: string[] };
+  const blocks: ContentBlock[] = [];
+  let current: ContentBlock | null = null;
+  const flush = () => {
+    if (current) blocks.push(current);
+    current = null;
+  };
+
+  for (const line of content.split(/\r?\n/)) {
+    const unordered = line.match(/^\s*(?:[-*+•–—])\s+(.+)$/);
+    const ordered = line.match(/^\s*(?:\d+[.)]|[a-zA-Z][.)])\s+(.+)$/);
+    if (unordered || ordered) {
+      const type = unordered ? 'unordered' : 'ordered';
+      if (current?.type !== type) flush();
+      if (!current) current = { type, lines: [] };
+      current.lines.push((unordered || ordered)![1]);
+    } else if (!line.trim()) {
+      flush();
+    } else {
+      if (current?.type !== 'paragraph') flush();
+      if (!current) current = { type: 'paragraph', lines: [] };
+      current.lines.push(line);
+    }
+  }
+  flush();
+
+  return blocks.map((block, index) => {
+    if (block.type === 'unordered') {
+      return <ul key={index} className="my-2 list-disc space-y-1 pl-6 marker:text-slate-500">{block.lines.map((line, itemIndex) => <li key={itemIndex} className="pl-1">{renderFormattedText(line, onArticleLink)}</li>)}</ul>;
+    }
+    if (block.type === 'ordered') {
+      return <ol key={index} className="my-2 list-decimal space-y-1 pl-6 marker:font-semibold marker:text-slate-500">{block.lines.map((line, itemIndex) => <li key={itemIndex} className="pl-1">{renderFormattedText(line, onArticleLink)}</li>)}</ol>;
+    }
+    return <p key={index} className="my-1">{block.lines.map((line, lineIndex) => <React.Fragment key={lineIndex}>{lineIndex > 0 && <br />}{renderFormattedText(line, onArticleLink)}</React.Fragment>)}</p>;
   });
 }
 
@@ -1582,7 +1624,7 @@ export default function FitaTaekwondoApp() {
                             <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-red-600" /> {item.date}</span>
                             {item.location && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-blue-600" /> {item.location}</span>}
                           </div>
-                          <div className="whitespace-pre-line text-xs text-slate-600 leading-relaxed">{renderFormattedText(item.content, openLinkedArticle)}</div>
+                          <div className="whitespace-pre-line text-xs text-slate-600 leading-relaxed">{renderRichContent(item.content, openLinkedArticle)}</div>
                         </div>
                       </div>
 
@@ -1807,7 +1849,7 @@ export default function FitaTaekwondoApp() {
                           {isOpen && (
                             <div className="p-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-700 leading-relaxed">
                               <div className={`whitespace-pre-line text-xs sm:text-sm ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
-                                {renderFormattedText(sub.content, openLinkedArticle)}
+                                {renderRichContent(sub.content, openLinkedArticle)}
                               </div>
 
                               {(sub as any).source?.trim() && (
