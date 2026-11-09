@@ -94,6 +94,21 @@ function parseBulkArticles(source: string) {
   return { articles, errors };
 }
 
+function findSimilarArticles(article: { title: string; tags?: string[] }, existing: any[]) {
+  const stopWords = new Set(['del', 'della', 'delle', 'dello', 'degli', 'dei', 'che', 'con', 'per', 'una', 'uno', 'gli', 'tra', 'dal', 'alla', 'alle', 'nel', 'nella', 'sul', 'sulla', 'articolo', 'regola']);
+  const terms = (value: string) => new Set(value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('it').split(/[^a-z0-9]+/).filter(word => word.length > 2 && !stopWords.has(word)));
+  const incoming = terms([article.title, ...(article.tags || [])].join(' '));
+  if (incoming.size === 0) return [];
+  return existing.map(item => {
+    const candidate = terms([item.title, ...(item.tags || [])].join(' '));
+    const intersection = [...incoming].filter(word => candidate.has(word)).length;
+    const union = new Set([...incoming, ...candidate]).size;
+    return { item, score: union ? intersection / union : 0 };
+  }).filter(({ item, score }) =>
+    score >= 0.4 || (article.title.toLocaleLowerCase('it').includes(item.title.toLocaleLowerCase('it')) && item.title.length > 5)
+  ).sort((a, b) => b.score - a.score).slice(0, 4);
+}
+
 function renderFormattedText(content: string, onArticleLink?: (id: string) => void): React.ReactNode[] {
   const formattedToken = /(\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<]+|\*\*[\s\S]+?\*\*|\*[^*\n]+\*|<u>[\s\S]+?<\/u>)/gi;
   return content.split(formattedToken).map((part, index) => {
@@ -340,7 +355,8 @@ export default function FitaTaekwondoApp() {
   const newsSyncAvailableRef = useRef(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
-  const [articleSort, setArticleSort] = useState<'custom' | 'title-asc' | 'title-desc'>('custom');
+  const [articleSort, setArticleSort] = useState<'custom' | 'title-asc' | 'title-desc' | 'date-asc' | 'date-desc' | 'favorites-first'>('custom');
+  const [bulkImportReviewItems, setBulkImportReviewItems] = useState<Array<{ article: any; matches: Array<{ title: string; section: string; score: number }>; include: boolean }> | null>(null);
   const [selectedNewsCategory, setSelectedNewsCategory] = useState<string>('Tutti');
 
   const [activeSectionId, setActiveSectionId] = useState('home');
@@ -986,6 +1002,7 @@ export default function FitaTaekwondoApp() {
     if (isUploadingArticleMedia || !formTitle.trim() || !formContent.trim()) return;
     const newSub = {
       id: editingSubsection ? editingSubsection.id : 'sub_' + Date.now(),
+      addedAt: (editingSubsection as any)?.addedAt ?? new Date().toISOString(),
       hidden: (editingSubsection as any)?.hidden ?? false,
       title: formTitle,
       content: formContent,
@@ -1014,23 +1031,33 @@ export default function FitaTaekwondoApp() {
     if (!user || user.role !== 'admin' || !adminMode) return;
 
     const { articles, errors } = parseBulkArticles(bulkImportText);
-    if (errors.length > 0) {
-      showToast(errors[0]);
-      return;
-    }
-    if (articles.length === 0) {
-      showToast('Incolla almeno un articolo valido prima di importarli.');
-      return;
-    }
+    if (errors.length > 0) { showToast(errors[0]); return; }
+    if (articles.length === 0) { showToast('Incolla almeno un articolo valido prima di importarli.'); return; }
 
     const targetSection = sections.find(section => section.id === bulkImportSectionId);
-    if (!targetSection) {
-      showToast('Seleziona una sezione del regolamento valida.');
-      return;
+    if (!targetSection) { showToast('Seleziona una sezione del regolamento valida.'); return; }
+
+    if (!bulkImportReviewItems) {
+      const existing = sections.flatMap(section => section.subsections.map((item: any) => ({ ...item, sectionTitle: section.title })));
+      const reviewItems = articles.map((article, index) => {
+        const fromThisImport = articles.slice(0, index).map(item => ({ ...item, sectionTitle: 'Questo stesso import' }));
+        const matches = findSimilarArticles(article, [...existing, ...fromThisImport])
+          .map(({ item, score }) => ({ title: item.title, section: item.sectionTitle, score }));
+        return { article, matches, include: true };
+      });
+      if (reviewItems.some(item => item.matches.length > 0)) {
+        setBulkImportReviewItems(reviewItems);
+        showToast('Controlla gli articoli simili prima di completare l’importazione.');
+        return;
+      }
     }
 
-    const importedSubsections = articles.map((article, index) => ({
+    const articlesToImport = bulkImportReviewItems
+      ? bulkImportReviewItems.filter(item => item.include).map(item => item.article)
+      : articles;
+    const importedSubsections = articlesToImport.map((article, index) => ({
       id: `sub_bulk_${Date.now()}_${index}`,
+      addedAt: new Date().toISOString(),
       title: article.title,
       content: article.content,
       tags: article.tags,
@@ -1039,15 +1066,20 @@ export default function FitaTaekwondoApp() {
     }));
 
     setSections(prev => prev.map(section =>
-      section.id === bulkImportSectionId
-        ? { ...section, subsections: [...section.subsections, ...importedSubsections] }
-        : section
+      section.id === bulkImportSectionId ? { ...section, subsections: [...section.subsections, ...importedSubsections] } : section
     ));
     setActiveSectionId(bulkImportSectionId);
     setActiveTabMode('rules');
     setIsQuickImportModalOpen(false);
     setBulkImportText('');
+    setBulkImportReviewItems(null);
     showToast(`Importati ${importedSubsections.length} articoli in "${targetSection.title}".`);
+  };
+
+  const toggleBulkReviewItem = (index: number) => {
+    setBulkImportReviewItems(previous => previous?.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, include: !item.include } : item
+    ) ?? null);
   };
 
   const handleEditClick = (sub: any, sectionId: string) => {
@@ -1180,6 +1212,12 @@ export default function FitaTaekwondoApp() {
   }).sort((a, b) => {
     if (articleSort === 'title-asc') return a.title.localeCompare(b.title, 'it', { sensitivity: 'base' });
     if (articleSort === 'title-desc') return b.title.localeCompare(a.title, 'it', { sensitivity: 'base' });
+    if (articleSort === 'date-asc' || articleSort === 'date-desc') {
+      const aDate = Date.parse((a as any).addedAt || '') || 0;
+      const bDate = Date.parse((b as any).addedAt || '') || 0;
+      return articleSort === 'date-asc' ? aDate - bDate : bDate - aDate;
+    }
+    if (articleSort === 'favorites-first') return Number(favorites.includes(b.id)) - Number(favorites.includes(a.id)) || a.title.localeCompare(b.title, 'it', { sensitivity: 'base' });
     return 0;
   }) : [];
 
@@ -1579,6 +1617,9 @@ export default function FitaTaekwondoApp() {
                           <option value="custom">Ordine personalizzato</option>
                           <option value="title-asc">Titolo A–Z</option>
                           <option value="title-desc">Titolo Z–A</option>
+                          <option value="date-asc">Dal meno recente</option>
+                          <option value="date-desc">Dal più recente</option>
+                          <option value="favorites-first">Preferiti per primi</option>
                         </select>
                       </label>
                       {isSelectingArticles && <span className="font-semibold text-[#0B1B3D]">{selectedArticleIds.length} selezionati</span>}
@@ -1666,6 +1707,9 @@ export default function FitaTaekwondoApp() {
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <h3 className={`text-xs sm:text-base font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
+                                  <span className="text-[10px] font-medium text-slate-400">
+                                    {(sub as any).addedAt ? `Aggiunto a ${new Date((sub as any).addedAt).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}` : 'Data di inserimento non disponibile'}
+                                  </span>
                                   {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
                                 </div>
                                 {sub.tags && (
@@ -1827,7 +1871,7 @@ export default function FitaTaekwondoApp() {
                   <h3 className="text-base sm:text-lg font-bold text-[#0B1B3D]">Importazione rapida articoli</h3>
                   <p className="text-xs text-slate-500 mt-1">Incolla il testo generato dall’AI, controlla un’anteprima e importa gli articoli.</p>
                 </div>
-                <button type="button" onClick={() => setIsQuickImportModalOpen(false)} className="text-slate-400 hover:text-slate-600" aria-label="Chiudi">
+                <button type="button" onClick={() => { setIsQuickImportModalOpen(false); setBulkImportReviewItems(null); }} className="text-slate-400 hover:text-slate-600" aria-label="Chiudi">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1877,12 +1921,38 @@ export default function FitaTaekwondoApp() {
                   <textarea
                     id="bulk-import-text"
                     value={bulkImportText}
-                    onChange={(e) => setBulkImportText(e.target.value)}
+                    onChange={(e) => { setBulkImportText(e.target.value); setBulkImportReviewItems(null); }}
+                    disabled={!!bulkImportReviewItems}
                     placeholder={BULK_ARTICLE_TEMPLATE}
                     rows={14}
                     className="w-full bg-slate-50 border border-slate-300 p-3 rounded-lg font-mono text-xs text-slate-800 focus:outline-none focus:border-[#0B1B3D]"
                   />
                 </div>
+
+                {bulkImportReviewItems && (
+                  <section className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3" aria-label="Revisione possibili duplicati">
+                    <div>
+                      <h4 className="font-bold text-amber-950">Possibili articoli duplicati</h4>
+                      <p className="mt-1 text-[11px] text-amber-900">Confronta i titoli simili e deseleziona quelli che non vuoi importare. Gli altri articoli restano selezionati.</p>
+                    </div>
+                    {bulkImportReviewItems.map((item, index) => (
+                      <label key={index} className="block rounded-lg border border-amber-200 bg-white p-3">
+                        <span className="flex items-start gap-2">
+                          <input type="checkbox" checked={item.include} onChange={() => toggleBulkReviewItem(index)} className="mt-0.5 h-4 w-4 accent-emerald-700" />
+                          <span className="min-w-0">
+                            <span className="block font-bold text-slate-800">{item.article.title}</span>
+                            {item.matches.length > 0 ? item.matches.map((match, matchIndex) => (
+                              <span key={matchIndex} className="mt-1 block text-[11px] text-amber-900">
+                                Somiglia a “{match.title}” in {match.section} ({Math.round(match.score * 100)}% di corrispondenza)
+                              </span>
+                            )) : <span className="mt-1 block text-[11px] text-emerald-700">Nessun articolo simile trovato</span>}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                    <button type="button" onClick={() => setBulkImportReviewItems(null)} className="text-xs font-bold text-slate-700 underline">Torna alla modifica del testo</button>
+                  </section>
+                )}
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -1926,10 +1996,10 @@ export default function FitaTaekwondoApp() {
                 <button type="button" onClick={() => setIsQuickImportModalOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 font-bold">Annulla</button>
                 <button
                   type="submit"
-                  disabled={!bulkImportText.trim() || parseBulkArticles(bulkImportText).articles.length === 0 || parseBulkArticles(bulkImportText).errors.length > 0}
+                  disabled={!bulkImportText.trim() || parseBulkArticles(bulkImportText).articles.length === 0 || parseBulkArticles(bulkImportText).errors.length > 0 || (!!bulkImportReviewItems && !bulkImportReviewItems.some(item => item.include))}
                   className="px-4 py-2 rounded-lg bg-emerald-700 text-white font-bold hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Importa {parseBulkArticles(bulkImportText).articles.length} articoli
+                  {bulkImportReviewItems ? `Importa ${bulkImportReviewItems.filter(item => item.include).length} selezionati` : `Verifica e importa ${parseBulkArticles(bulkImportText).articles.length} articoli`}
                 </button>
               </form>
             </div>
