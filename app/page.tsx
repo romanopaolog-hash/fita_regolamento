@@ -94,6 +94,17 @@ function parseBulkArticles(source: string) {
   return { articles, errors };
 }
 
+const LEGACY_ARTICLE_ADDED_AT = '2026-09-01T12:00:00.000Z';
+
+function withLegacyArticleDates(sections: any[]) {
+  return sections.map(section => ({
+    ...section,
+    subsections: (section.subsections || []).map((article: any) =>
+      article.addedAt ? article : { ...article, addedAt: LEGACY_ARTICLE_ADDED_AT }
+    )
+  }));
+}
+
 function findSimilarArticles(article: { title: string; tags?: string[] }, existing: any[]) {
   const stopWords = new Set(['del', 'della', 'delle', 'dello', 'degli', 'dei', 'che', 'con', 'per', 'una', 'uno', 'gli', 'tra', 'dal', 'alla', 'alle', 'nel', 'nella', 'sul', 'sulla', 'articolo', 'regola']);
   const terms = (value: string) => new Set(value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('it').split(/[^a-z0-9]+/).filter(word => word.length > 2 && !stopWords.has(word)));
@@ -445,6 +456,7 @@ export default function FitaTaekwondoApp() {
         if (Array.isArray(parsed)) deviceSections = parsed;
       } catch {}
     }
+    deviceSections = withLegacyArticleDates(deviceSections);
     setSections(deviceSections);
 
     // Remove the old per-device secret; admin access is checked by Clerk on the server.
@@ -504,8 +516,9 @@ export default function FitaTaekwondoApp() {
         if (!active) return;
         articleSyncAvailableRef.current = true;
         articleSyncEtagRef.current = result.etag ?? null;
-        const cloudSections = Array.isArray(result.sections) ? result.sections : null;
-        lastSyncedSectionsRef.current = cloudSections ? JSON.stringify(cloudSections) : null;
+        const rawCloudSections = Array.isArray(result.sections) ? result.sections : null;
+        lastSyncedSectionsRef.current = rawCloudSections ? JSON.stringify(rawCloudSections) : null;
+        const cloudSections = rawCloudSections ? withLegacyArticleDates(rawCloudSections) : null;
 
         const resolvedSections = cloudSections
           ? (lastSyncedSnapshot
