@@ -3,7 +3,7 @@ import { auth, clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from '../../../../lib/account-approval';
 
 const MEDIA_PREFIX = 'fita-regolamento/media/';
-const MAX_IMAGE_SIZE = 4 * 1024 * 1024;
+const MAX_MEDIA_SIZE = 4 * 1024 * 1024;
 const noStore = { 'Cache-Control': 'no-store, max-age=0' };
 
 function sameOrigin(request: Request) {
@@ -43,17 +43,17 @@ export async function POST(request: Request) {
     }
 
     const contentLength = Number(request.headers.get('content-length') || 0);
-    if (contentLength > MAX_IMAGE_SIZE + 64 * 1024) {
-      return Response.json({ error: 'L’immagine supera il limite di 4 MB.' }, { status: 413, headers: noStore });
+    if (contentLength > MAX_MEDIA_SIZE + 64 * 1024) {
+      return Response.json({ error: 'Il file supera il limite di 4 MB.' }, { status: 413, headers: noStore });
     }
 
     const formData = await request.formData();
     const file = formData.get('file');
-    if (!(file instanceof File) || !file.type.startsWith('image/')) {
-      return Response.json({ error: 'Seleziona o incolla un file immagine.' }, { status: 400, headers: noStore });
+    if (!(file instanceof File) || !(file.type.startsWith('image/') || file.type.startsWith('video/'))) {
+      return Response.json({ error: 'Seleziona un’immagine o un video.' }, { status: 400, headers: noStore });
     }
-    if (file.size > MAX_IMAGE_SIZE) {
-      return Response.json({ error: 'L’immagine supera il limite di 4 MB.' }, { status: 413, headers: noStore });
+    if (file.size > MAX_MEDIA_SIZE) {
+      return Response.json({ error: 'Il file supera il limite di 4 MB.' }, { status: 413, headers: noStore });
     }
 
     const extension = file.type.split('/')[1]?.replace(/[^a-zA-Z0-9+.-]/g, '') || 'img';
