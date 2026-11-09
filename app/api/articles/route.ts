@@ -1,5 +1,6 @@
 import { BlobPreconditionFailedError, get, head, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
+import { isAccountApproved } from '../../../lib/account-approval';
 
 const ARTICLES_PATH = 'fita-regolamento/articles.json';
 const MAX_BODY_SIZE = 2_000_000;
@@ -54,6 +55,9 @@ export async function GET() {
 
     const clerk = await clerkClient();
     const currentUser = await clerk.users.getUser(userId);
+    if (!isAccountApproved(currentUser)) {
+      return Response.json({ error: 'La richiesta di accesso è in attesa di approvazione.' }, { status: 403, headers: noStoreHeaders() });
+    }
     const isAdmin = currentUser.publicMetadata.role === 'admin';
     const { sections, etag } = await readArticles();
     const visibleSections = isAdmin || !sections
