@@ -2128,7 +2128,7 @@ export default function FitaTaekwondoApp() {
                         const embedUrl = getShowcaseEmbedUrl(video.url);
                         let isPortraitEmbed = false;
                         try {
-                          const host = new URL(video.url).hostname.replace(/^www\\./, '');
+                          const host = new URL(video.url).hostname.replace(/^www\./, '');
                           isPortraitEmbed = host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'tiktok.com' || host.endsWith('.tiktok.com');
                         } catch {}
                         return (
