@@ -1265,6 +1265,20 @@ export default function FitaTaekwondoApp() {
     setArticleSort('custom');
   };
 
+  const moveSubsectionToEdge = (sectionId: string, articleId: string, edge: 'top' | 'bottom') => {
+    setSections(prev => prev.map(section => {
+      if (section.id !== sectionId) return section;
+      const subsections = [...section.subsections];
+      const index = subsections.findIndex(article => article.id === articleId);
+      if (index < 0 || (edge === 'top' && index === 0) || (edge === 'bottom' && index === subsections.length - 1)) return section;
+      const [article] = subsections.splice(index, 1);
+      if (edge === 'top') subsections.unshift(article);
+      else subsections.push(article);
+      return { ...section, subsections };
+    }));
+    setArticleSort('custom');
+  };
+
   const displayedSections = user?.role === 'admin' && adminMode
     ? sections
     : sections.filter(section => !(section as any).hidden).map(section => ({
@@ -1837,6 +1851,8 @@ export default function FitaTaekwondoApp() {
                                 <div className="flex items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
                                   <button type="button" disabled={storedArticleIndex === 0} onClick={() => handleMoveSubsection(currentSection.id, sub.id, -1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in alto" aria-label={`Sposta ${sub.title} in alto`}>↑</button>
                                   <button type="button" disabled={storedArticleIndex === currentSection.subsections.length - 1} onClick={() => handleMoveSubsection(currentSection.id, sub.id, 1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in basso" aria-label={`Sposta ${sub.title} in basso`}>↓</button>
+                                  <button type="button" disabled={storedArticleIndex === 0} onClick={() => moveSubsectionToEdge(currentSection.id, sub.id, 'top')} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta all’inizio della sezione" aria-label={`Sposta ${sub.title} all’inizio della sezione`}>⇈</button>
+                                  <button type="button" disabled={storedArticleIndex === currentSection.subsections.length - 1} onClick={() => moveSubsectionToEdge(currentSection.id, sub.id, 'bottom')} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta alla fine della sezione" aria-label={`Sposta ${sub.title} alla fine della sezione`}>⇊</button>
                                   <button type="button" onClick={() => toggleArticleVisibility(currentSection.id, sub.id)} className={`rounded p-1.5 ${isHiddenForUsers ? 'text-slate-500 hover:bg-slate-200' : 'text-slate-600 hover:bg-slate-100'}`} title={isHiddenForUsers ? 'Mostra agli utenti' : 'Nascondi agli utenti'} aria-label={isHiddenForUsers ? `Mostra ${sub.title} agli utenti` : `Nascondi ${sub.title} agli utenti`}>
                                     {isHiddenForUsers ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                   </button>
