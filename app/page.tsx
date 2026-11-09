@@ -1048,6 +1048,24 @@ export default function FitaTaekwondoApp() {
     });
   };
 
+  const insertDividerAtCursor = () => {
+    const textarea = articleContentInputRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = formContent.slice(0, start);
+    const after = formContent.slice(end);
+    const prefix = !before ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = !after ? '' : after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n';
+    const insertion = `${prefix}---${suffix}`;
+    setFormContent(`${before}${insertion}${after}`);
+    const caret = start + prefix.length + 3;
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(caret, caret);
+    });
+  };
+
   const applyNewsContentFormat = (format: 'bold' | 'italic' | 'underline') => {
     const textarea = newsContentInputRef.current;
     if (!textarea) return;
@@ -2240,7 +2258,7 @@ export default function FitaTaekwondoApp() {
                       <button type="button" onClick={() => applyContentFormat('underline')} title="Sottolineato" aria-label="Applica sottolineato" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm underline text-slate-700 hover:bg-slate-50">U</button>
                       <button type="button" onClick={() => insertContentLink('article')} title="Inserisci collegamento a un articolo o sito web" className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><LinkIcon className="inline h-3.5 w-3.5" /> Link</button>
                       <button type="button" onClick={() => setFormContent(current => current + (current && !current.endsWith(String.fromCharCode(10)) ? String.fromCharCode(10) : '') + '• ')} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
-                      <button type="button" onClick={() => setFormContent(current => `${current.trimEnd()}${current.trim() ? '\n\n' : ''}---\n\n`)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Separatore</button>
+                      <button type="button" onClick={insertDividerAtCursor} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Separatore</button>
                     </div>
                   </div>
                   <textarea ref={articleContentInputRef} id="article-content" required rows={9} value={formContent} onKeyDown={handleArticleContentKeyDown} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
