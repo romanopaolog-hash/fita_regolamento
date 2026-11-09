@@ -737,6 +737,43 @@ export default function FitaTaekwondoApp() {
     showToast('Documento rimosso.');
   };
 
+  const handleArticleContentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
+    const textarea = e.currentTarget;
+    const start = textarea.selectionStart;
+    if (start !== textarea.selectionEnd) return;
+
+    const lineStart = formContent.lastIndexOf('\n', start - 1) + 1;
+    const lineBreak = formContent.indexOf('\n', start);
+    const lineEnd = lineBreak === -1 ? formContent.length : lineBreak;
+    const line = formContent.slice(lineStart, lineEnd);
+    const marker = line.match(/^(\s*)(•\s+|[-*]\s+|(\d+)([.)])\s+)/);
+    if (!marker) return;
+
+    e.preventDefault();
+    const currentText = line.slice(marker[0].length);
+    let updated: string;
+    let caret: number;
+
+    if (!currentText.trim()) {
+      const followingText = lineBreak === -1 ? '\n' : formContent.slice(lineBreak);
+      updated = formContent.slice(0, lineStart) + followingText;
+      caret = lineStart + 1;
+    } else {
+      const nextMarker = marker[3]
+        ? marker[1] + (Number(marker[3]) + 1) + marker[4] + ' '
+        : marker[0];
+      updated = formContent.slice(0, start) + '\n' + nextMarker + formContent.slice(start);
+      caret = start + 1 + nextMarker.length;
+    }
+
+    setFormContent(updated);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(caret, caret);
+    });
+  };
+
   const applyContentFormat = (format: 'bold' | 'italic' | 'underline') => {
     const textarea = articleContentInputRef.current;
     if (!textarea) return;
@@ -1706,8 +1743,8 @@ export default function FitaTaekwondoApp() {
                       <button type="button" onClick={() => setFormContent(current => current + (current && !current.endsWith(String.fromCharCode(10)) ? String.fromCharCode(10) : '') + '• ')} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
                     </div>
                   </div>
-                  <textarea ref={articleContentInputRef} id="article-content" required rows={9} value={formContent} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
-                  <p className="mt-1 text-[10px] text-slate-500">Usa il pulsante per aggiungere righe con punti elenco; vai a capo per continuare l’elenco.</p>
+                  <textarea ref={articleContentInputRef} id="article-content" required rows={9} value={formContent} onKeyDown={handleArticleContentKeyDown} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
+                  <p className="mt-1 text-[10px] text-slate-500">Invio continua l’elenco; Invio su un punto vuoto lo chiude. Shift+Invio inserisce un normale a capo.</p>
                 </div>
 
                 <div>
