@@ -46,7 +46,7 @@ Testo:
 Testo completo dell'articolo.
 === FINE ARTICOLO ===`;
 
-const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regolamento. Usa solo informazioni presenti nel materiale, conserva numeri, condizioni ed eccezioni, non inventare contenuti. Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. Il campo Titolo deve contenere solo l'argomento specifico: non inserire numeri o diciture come “Articolo 1”, “Articolo 2” o “Articolo 1 - ...”. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
+const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regolamento. Usa solo informazioni presenti nel materiale, conserva numeri, condizioni ed eccezioni, non inventare contenuti. Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. Il campo Titolo deve contenere solo l'argomento specifico: non inserire numeri o diciture come “Articolo 1”, “Articolo 2” o “Articolo 1 - ...”. Se la fonte è un regolamento ufficiale, nel campo Fonte cita il numero o riferimento dell'articolo originale solo quando è chiaramente presente nel materiale. Non inventare numeri o riferimenti; se non sono presenti, lascia Fonte vuota oppure indica soltanto il nome della fonte fornita. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
 
 ${BULK_ARTICLE_TEMPLATE}`;
 
@@ -271,7 +271,7 @@ export default function FitaTaekwondoApp() {
   const [newsList, setNewsList] = useState(DEFAULT_NEWS);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
-  const [articleSort, setArticleSort] = useState<'default' | 'title-asc' | 'title-desc'>('default');
+  const [articleSort, setArticleSort] = useState<'custom' | 'title-asc' | 'title-desc'>('custom');
   const [selectedNewsCategory, setSelectedNewsCategory] = useState<string>('Tutti');
 
   const [activeSectionId, setActiveSectionId] = useState('home');
@@ -295,8 +295,6 @@ export default function FitaTaekwondoApp() {
     region: string;
   } | null>(null);
 
-  const { isLoaded: clerkLoaded, user: clerkUser } = useUser();
-  const { signOut } = useClerk();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
@@ -336,7 +334,11 @@ export default function FitaTaekwondoApp() {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const { isLoaded: clerkLoaded, user: clerkUser } = useUser();
+  const { signOut } = useClerk();
+
   useEffect(() => {
+    if (!clerkLoaded || !clerkUser) return;
     let active = true;
     let deviceSections = DEFAULT_SECTIONS;
     const savedSecs = localStorage.getItem('tkd_sections');
@@ -402,7 +404,7 @@ export default function FitaTaekwondoApp() {
       });
 
     return () => { active = false; };
-  }, []);
+  }, [clerkLoaded, clerkUser?.id]);
 
   useEffect(() => {
     if (!isSectionsLoaded) return;
@@ -613,6 +615,7 @@ export default function FitaTaekwondoApp() {
     if (!formTitle.trim() || !formContent.trim()) return;
     const newSub = {
       id: editingSubsection ? editingSubsection.id : 'sub_' + Date.now(),
+      hidden: (editingSubsection as any)?.hidden ?? false,
       title: formTitle,
       content: formContent,
       source: formSource.trim(),
@@ -716,14 +719,50 @@ export default function FitaTaekwondoApp() {
     showToast('Articolo eliminato.');
   };
 
-  const currentSection = sections.find(s => s.id === activeSectionId);
+  const toggleSectionVisibility = (sectionId: string) => {
+    setSections(prev => prev.map(section => section.id === sectionId
+      ? { ...section, hidden: !(section as any).hidden }
+      : section));
+  };
+
+  const toggleArticleVisibility = (sectionId: string, articleId: string) => {
+    setSections(prev => prev.map(section => section.id !== sectionId ? section : {
+      ...section,
+      subsections: section.subsections.map(article => article.id === articleId
+        ? { ...article, hidden: !(article as any).hidden }
+        : article)
+    }));
+  };
+
+  const handleMoveSubsection = (sectionId: string, articleId: string, direction: -1 | 1) => {
+    setSections(prev => prev.map(section => {
+      if (section.id !== sectionId) return section;
+      const subsections = [...section.subsections];
+      const index = subsections.findIndex(article => article.id === articleId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= subsections.length) return section;
+      [subsections[index], subsections[nextIndex]] = [subsections[nextIndex], subsections[index]];
+      return { ...section, subsections };
+    }));
+    setArticleSort('custom');
+  };
+
+  const displayedSections = user?.role === 'admin' && adminMode
+    ? sections
+    : sections.filter(section => !(section as any).hidden).map(section => ({
+      ...section,
+      subsections: section.subsections.filter(sub => !(sub as any).hidden)
+    }));
+
+  const currentSection = displayedSections.find(s => s.id === activeSectionId);
 
   const articleSearchSuggestions = searchQuery.trim().length >= 2
-    ? sections.flatMap(section => section.subsections.map(sub => ({ section, sub })))
+    ? displayedSections.flatMap(section => section.subsections.map(sub => ({ section, sub })))
         .filter(({ section, sub }) => {
           const query = searchQuery.trim().toLowerCase();
           return sub.title.toLowerCase().includes(query)
             || sub.content.toLowerCase().includes(query)
+            || (typeof (sub as any).description === 'string' && (sub as any).description.toLowerCase().includes(query))
             || (sub.tags && sub.tags.some(tag => tag.toLowerCase().includes(query)))
             || section.title.toLowerCase().includes(query);
         })
@@ -735,6 +774,7 @@ export default function FitaTaekwondoApp() {
     const matchesSearch =
       sub.title.toLocaleLowerCase('it').includes(query) ||
       sub.content.toLocaleLowerCase('it').includes(query) ||
+      (typeof (sub as any).description === 'string' && (sub as any).description.toLocaleLowerCase('it').includes(query)) ||
       (sub.tags && sub.tags.some(t => t.toLocaleLowerCase('it').includes(query)));
     const matchesFav = showOnlyFavorites ? favorites.includes(sub.id) : true;
     return matchesSearch && matchesFav;
@@ -748,6 +788,27 @@ export default function FitaTaekwondoApp() {
   const filteredNews = newsList
     .filter(n => selectedNewsCategory === 'Tutti' || n.category === selectedNewsCategory)
     .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
+
+  if (!clerkLoaded) {
+    return <main className="flex min-h-screen items-center justify-center bg-[#F4F6F9] text-sm font-semibold text-slate-600">Caricamento accesso…</main>;
+  }
+
+  if (!clerkUser) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F4F6F9] p-4">
+        <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+          <h1 className="mb-1 text-xl font-black text-[#0B1B3D]">FITA Regolamento</h1>
+          <p className="mb-5 text-sm text-slate-600">Accedi o crea un account per consultare il sito.</p>
+          <div className="mb-4 flex gap-2">
+            <button type="button" onClick={() => setAuthMode('login')} className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${authMode === 'login' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Accedi</button>
+            <button type="button" onClick={() => setAuthMode('register')} className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${authMode === 'register' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Registrati</button>
+          </div>
+          {authMode === 'login' ? <SignIn routing="hash" signUpUrl="/sign-up" /> : <SignUp routing="hash" signInUrl="/sign-in" />}
+          <p className="mt-3 text-center text-xs text-slate-500">Il recupero password invia un codice all’email verificata.</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col justify-between pb-20 md:pb-0">
@@ -783,7 +844,13 @@ export default function FitaTaekwondoApp() {
                   {user.role === 'admin' && (
                     <button
                       type="button"
-                      onClick={() => setAdminMode(mode => !mode)}
+                      onClick={() => {
+                        const nextMode = !adminMode;
+                        if (!nextMode && activeSectionId !== 'home' && (sections.find(section => section.id === activeSectionId) as any)?.hidden) {
+                          setActiveSectionId('home');
+                        }
+                        setAdminMode(nextMode);
+                      }}
                       aria-pressed={adminMode}
                       className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${adminMode ? 'border-amber-400/60 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20' : 'border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
                     >
@@ -891,7 +958,7 @@ export default function FitaTaekwondoApp() {
                 <span>Home / News</span>
               </button>
 
-              {sections.map((sec) => (
+              {displayedSections.map((sec) => (
                 <button
                   key={sec.id}
                   onClick={() => { setActiveSectionId(sec.id); setActiveTabMode('rules'); }}
@@ -1026,6 +1093,11 @@ export default function FitaTaekwondoApp() {
                   </div>
                   <h2 className="text-lg sm:text-2xl font-black text-[#0B1B3D]">{currentSection.title}</h2>
                   <p className="text-xs text-slate-500">{currentSection.subtitle}</p>
+                  {isAccountAdmin && adminMode && (
+                    <button type="button" onClick={() => toggleSectionVisibility(currentSection.id)} className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100">
+                      {(currentSection as any).hidden ? 'Riattiva sezione per gli utenti' : 'Nascondi temporaneamente la sezione agli utenti'}
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 w-full sm:w-auto">
@@ -1059,7 +1131,7 @@ export default function FitaTaekwondoApp() {
                       <label className="flex items-center gap-2 text-xs text-slate-500">
                         <span>Ordina</span>
                         <select value={articleSort} onChange={e => setArticleSort(e.target.value as typeof articleSort)} className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
-                          <option value="default">Originale</option>
+                          <option value="custom">Ordine personalizzato</option>
                           <option value="title-asc">Titolo A–Z</option>
                           <option value="title-desc">Titolo Z–A</option>
                         </select>
@@ -1122,6 +1194,7 @@ export default function FitaTaekwondoApp() {
                     filteredSubsections.map((sub) => {
                       const isOpen = openAccordions[sub.id] ?? false;
                       const isFav = favorites.includes(sub.id);
+                      const storedArticleIndex = currentSection.subsections.findIndex(article => article.id === sub.id);
 
                       return (
                         <div key={sub.id} className={`bg-white rounded-xl border shadow-sm overflow-hidden ${selectedArticleIds.includes(sub.id) ? 'border-red-300 ring-1 ring-red-200' : 'border-slate-200'}`}>
@@ -1170,10 +1243,13 @@ export default function FitaTaekwondoApp() {
 
                               {user && user.role === 'admin' && adminMode && (
                                 <div className="flex items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
-                                  <button onClick={() => handleEditClick(sub, currentSection.id)} className="p-1 text-blue-600">
+                                  <button type="button" disabled={storedArticleIndex === 0} onClick={() => handleMoveSubsection(currentSection.id, sub.id, -1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in alto" aria-label={`Sposta ${sub.title} in alto`}>↑</button>
+                                  <button type="button" disabled={storedArticleIndex === currentSection.subsections.length - 1} onClick={() => handleMoveSubsection(currentSection.id, sub.id, 1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in basso" aria-label={`Sposta ${sub.title} in basso`}>↓</button>
+                                  <button type="button" onClick={() => toggleArticleVisibility(currentSection.id, sub.id)} className="rounded px-1.5 py-0.5 text-amber-700 hover:bg-amber-50" title={(sub as any).hidden ? 'Mostra agli utenti' : 'Nascondi agli utenti'}>{(sub as any).hidden ? 'Mostra' : 'Nascondi'}</button>
+                                  <button onClick={() => handleEditClick(sub, currentSection.id)} className="p-1 text-blue-600" aria-label={`Modifica ${sub.title}`}>
                                     <Edit3 className="w-3.5 h-3.5" />
                                   </button>
-                                  <button onClick={() => handleDeleteSubsection(currentSection.id, sub.id)} className="p-1 text-red-600">
+                                  <button onClick={() => handleDeleteSubsection(currentSection.id, sub.id)} className="p-1 text-red-600" aria-label={`Elimina ${sub.title}`}>
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
@@ -1426,8 +1502,12 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 <div>
-                  <label htmlFor="article-content" className="block text-slate-600 font-bold mb-1">Contenuto *</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label htmlFor="article-content" className="block text-slate-600 font-bold">Contenuto *</label>
+                    <button type="button" onClick={() => setFormContent(current => `${current}${current && !current.endsWith('\n') ? '\n' : ''}• `)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
+                  </div>
                   <textarea id="article-content" required rows={9} value={formContent} onChange={(e) => setFormContent(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 resize-y focus:outline-none focus:border-[#0B1B3D]" />
+                  <p className="mt-1 text-[10px] text-slate-500">Usa il pulsante per aggiungere righe con punti elenco; vai a capo per continuare l’elenco.</p>
                 </div>
 
                 <div>
@@ -1498,7 +1578,7 @@ export default function FitaTaekwondoApp() {
           <span className="whitespace-nowrap text-[10px] leading-tight font-semibold">Home</span>
         </button>
 
-        {sections.map((sec) => {
+        {displayedSections.map((sec) => {
           const mobileNav = {
             kyorugi: { label: 'Combatt.', Icon: Swords },
             'video-replay': { label: 'VR', Icon: Video },
