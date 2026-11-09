@@ -133,6 +133,23 @@ function findSimilarArticles(article: { title: string; tags?: string[] }, existi
   ).sort((a, b) => b.score - a.score).slice(0, 4);
 }
 
+function getShowcaseEmbedUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') return `https://www.youtube-nocookie.com/embed/${url.pathname.slice(1)}`;
+    if (host === 'youtube.com' || host === 'm.youtube.com') {
+      const videoId = url.searchParams.get('v') || url.pathname.match(/\/(?:embed|shorts)\/([^/?]+)/)?.[1];
+      return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : null;
+    }
+    if (host === 'vimeo.com') {
+      const videoId = url.pathname.match(/\/(\d+)/)?.[1];
+      return videoId ? `https://player.vimeo.com/video/${videoId}` : null;
+    }
+  } catch {}
+  return null;
+}
+
 function renderFormattedText(content: string, onArticleLink?: (id: string) => void): React.ReactNode[] {
   const formattedToken = /(\[[^\]]+\]\([^\s)]+\)|https?:\/\/[^\s<]+|\*\*[\s\S]+?\*\*|\*[^*\n]+\*|<u>[\s\S]+?<\/u>)/gi;
   return content.split(formattedToken).map((part, index) => {
@@ -396,7 +413,8 @@ function mergeArticleSections(cloudSections: any[], deviceSections: any[]) {
       ...(deviceSection || {}),
       ...(cloudSection || {}),
       subsections: [...articleMap.values()],
-      documents: cloudSection?.documents ?? deviceSection?.documents ?? []
+      documents: cloudSection?.documents ?? deviceSection?.documents ?? [],
+      showcaseVideos: cloudSection?.showcaseVideos ?? deviceSection?.showcaseVideos ?? []
     };
   });
 }
@@ -439,7 +457,8 @@ function reconcileArticleSections(cloudSections: any[], deviceSections: any[], l
       ...deviceSection,
       ...cloudSection,
       subsections: [...cloudArticles.values()],
-      documents: [...documents.values()]
+      documents: [...documents.values()],
+      showcaseVideos: cloudSection.showcaseVideos ?? deviceSection.showcaseVideos ?? []
     };
   });
 }
@@ -463,7 +482,7 @@ export default function FitaTaekwondoApp() {
   const [selectedNewsCategory, setSelectedNewsCategory] = useState<string>('Tutti');
 
   const [activeSectionId, setActiveSectionId] = useState('home');
-  const [activeTabMode, setActiveTabMode] = useState<'rules' | 'materials'>('rules');
+  const [activeTabMode, setActiveTabMode] = useState<'rules' | 'materials' | 'showcase'>('rules');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isArticleSearchFocused, setIsArticleSearchFocused] = useState(false);
@@ -497,6 +516,10 @@ export default function FitaTaekwondoApp() {
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [showcaseFormOpen, setShowcaseFormOpen] = useState(false);
+  const [showcaseTitle, setShowcaseTitle] = useState('');
+  const [showcaseUrl, setShowcaseUrl] = useState('');
+  const [showcaseComment, setShowcaseComment] = useState('');
   const [movingArticle, setMovingArticle] = useState<{ id: string; title: string; sourceSectionId: string } | null>(null);
   const [moveTargetSectionId, setMoveTargetSectionId] = useState('');
 
@@ -950,6 +973,32 @@ export default function FitaTaekwondoApp() {
     if (!confirm('Eliminare questa notizia?')) return;
     setNewsList(prev => prev.filter(n => n.id !== id));
     showToast('Notizia eliminata.');
+  };
+
+  const handleSaveShowcaseVideo = (e: React.FormEvent) => {
+    e.preventDefault();
+    const title = showcaseTitle.trim();
+    const url = showcaseUrl.trim();
+    if (!title || !url) return;
+    let parsedUrl: URL;
+    try { parsedUrl = new URL(url); } catch { showToast('Inserisci un link video valido.'); return; }
+    if (!['https:', 'http:'].includes(parsedUrl.protocol)) { showToast('Inserisci un link video valido.'); return; }
+    const video = {
+      id: 'showcase-' + Date.now(),
+      title,
+      url: parsedUrl.toString(),
+      comment: showcaseComment.trim(),
+      addedAt: new Date().toISOString()
+    };
+    setSections(prev => prev.map(section => section.id === activeSectionId
+      ? { ...section, showcaseVideos: [video, ...((section as any).showcaseVideos || [])] }
+      : section
+    ));
+    setShowcaseTitle('');
+    setShowcaseUrl('');
+    setShowcaseComment('');
+    setShowcaseFormOpen(false);
+    showToast('Video aggiunto.');
   };
 
   const handleSaveDocument = (e: React.FormEvent) => {
@@ -1802,6 +1851,16 @@ export default function FitaTaekwondoApp() {
                   >
                     <BookOpen className="w-3.5 h-3.5" /> Articoli
                   </button>
+                  {['kyorugi', 'poomsae', 'freestyle'].includes(currentSection.id) && (
+                    <button
+                      onClick={() => setActiveTabMode('showcase')}
+                      className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        activeTabMode === 'showcase' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600'
+                      }`}
+                    >
+                      <Video className="w-3.5 h-3.5" /> {currentSection.id === 'kyorugi' ? 'Gestualità' : currentSection.id === 'poomsae' ? 'Esecuzioni' : 'Tecniche in evidenza'}
+                    </button>
+                  )}
                   <button
                     onClick={() => setActiveTabMode('materials')}
                     className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
@@ -2023,6 +2082,72 @@ export default function FitaTaekwondoApp() {
                     })
                   )}
                 </div>
+              )}
+
+              {activeTabMode === 'showcase' && ['kyorugi', 'poomsae', 'freestyle'].includes(currentSection.id) && (
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-[#0B1B3D]">{currentSection.id === 'kyorugi' ? 'Gestualità' : currentSection.id === 'poomsae' ? 'Esecuzioni' : 'Tecniche in evidenza'}</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">Video con commenti e dimostrazioni.</p>
+                    </div>
+                    {user?.role === 'admin' && adminMode && (
+                      <button type="button" onClick={() => setShowcaseFormOpen(value => !value)} className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-xs font-bold text-white">
+                        {showcaseFormOpen ? 'Annulla' : '+ Aggiungi video'}
+                      </button>
+                    )}
+                  </div>
+
+                  {showcaseFormOpen && user?.role === 'admin' && adminMode && (
+                    <form onSubmit={handleSaveShowcaseVideo} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                      <label className="block text-xs font-bold text-slate-600">Titolo video
+                        <input required value={showcaseTitle} onChange={event => setShowcaseTitle(event.target.value)} placeholder="Es. Calcio girato in salto" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+                      </label>
+                      <label className="block text-xs font-bold text-slate-600">Link video (YouTube, Vimeo o file MP4)
+                        <input required type="url" value={showcaseUrl} onChange={event => setShowcaseUrl(event.target.value)} placeholder="https://…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+                      </label>
+                      <label className="block text-xs font-bold text-slate-600">Commento
+                        <textarea value={showcaseComment} onChange={event => setShowcaseComment(event.target.value)} rows={3} placeholder="Descrivi cosa mostra il video…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+                      </label>
+                      <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">Salva video</button>
+                    </form>
+                  )}
+
+                  {((currentSection as any).showcaseVideos || []).length === 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500">Non ci sono ancora video in questa sezione.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      {((currentSection as any).showcaseVideos || []).map((video: any) => {
+                        const embedUrl = getShowcaseEmbedUrl(video.url);
+                        return (
+                          <article key={video.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                            <div className="aspect-video bg-slate-950">
+                              {embedUrl ? (
+                                <iframe src={embedUrl} title={video.title} className="h-full w-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen />
+                              ) : (
+                                <video src={video.url} controls preload="metadata" className="h-full w-full object-contain" />
+                              )}
+                            </div>
+                            <div className="flex items-start justify-between gap-3 p-4">
+                              <div>
+                                <h4 className="text-sm font-bold text-[#0B1B3D]">{video.title}</h4>
+                                {video.comment && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{video.comment}</p>}
+                              </div>
+                              {user?.role === 'admin' && adminMode && <button type="button" onClick={() => {
+                                if (!confirm('Rimuovere questo video?')) return;
+                                setSections(prev => prev.map(section => section.id === activeSectionId
+                                  ? { ...section, showcaseVideos: ((section as any).showcaseVideos || []).filter((item: any) => item.id !== video.id) }
+                                  : section
+                                ));
+                                showToast('Video rimosso.');
+                              }} aria-label="Rimuovi video" className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               )}
 
               {activeTabMode === 'materials' && (
