@@ -94,6 +94,15 @@ function parseBulkArticles(source: string) {
   return { articles, errors };
 }
 
+const DEMO_DOCUMENT_IDS = new Set(['doc-k1', 'doc-k2', 'doc-vr1', 'doc-p1', 'doc-f1']);
+
+function removeDemoDocuments(sections: any[]) {
+  return sections.map(section => ({
+    ...section,
+    documents: (section.documents || []).filter((document: any) => !DEMO_DOCUMENT_IDS.has(document.id))
+  }));
+}
+
 const LEGACY_ARTICLE_ADDED_AT = '2026-09-01T12:00:00.000Z';
 
 function withLegacyArticleDates(sections: any[]) {
@@ -435,7 +444,7 @@ export default function FitaTaekwondoApp() {
         if (Array.isArray(parsed)) deviceSections = parsed;
       } catch {}
     }
-    deviceSections = withLegacyArticleDates(deviceSections);
+    deviceSections = removeDemoDocuments(withLegacyArticleDates(deviceSections));
     setSections(deviceSections);
 
     // Remove the old per-device secret; admin access is checked by Clerk on the server.
@@ -490,7 +499,7 @@ export default function FitaTaekwondoApp() {
         articleSyncEtagRef.current = result.etag ?? null;
         const rawCloudSections = Array.isArray(result.sections) ? result.sections : null;
         lastSyncedSectionsRef.current = rawCloudSections ? JSON.stringify(rawCloudSections) : null;
-        const cloudSections = rawCloudSections ? withLegacyArticleDates(rawCloudSections) : null;
+        const cloudSections = rawCloudSections ? removeDemoDocuments(withLegacyArticleDates(rawCloudSections)) : null;
 
         const resolvedSections = cloudSections
           ? (lastSyncedSnapshot
@@ -546,8 +555,8 @@ export default function FitaTaekwondoApp() {
             let priorSnapshot: any[] = [];
             if (savedSnapshot) { try { priorSnapshot = JSON.parse(savedSnapshot); } catch {} }
             setSections(priorSnapshot.length
-              ? reconcileArticleSections(latest.sections, sections, priorSnapshot)
-              : mergeArticleSections(latest.sections, sections));
+              ? reconcileArticleSections(removeDemoDocuments(latest.sections), sections, priorSnapshot)
+              : mergeArticleSections(removeDemoDocuments(latest.sections), sections));
           }
           showToast('Ho unito gli aggiornamenti recenti. Attendi un istante per completare la sincronizzazione.');
           return;
@@ -862,12 +871,32 @@ export default function FitaTaekwondoApp() {
     showToast('Documento salvato!');
   };
 
-  const handleDeleteDocument = (secId: string, docId: string) => {
-    if (!confirm('Eliminare questo documento?')) return;
-    setSections(prev =>
-      prev.map(sec => sec.id === secId ? { ...sec, documents: sec.documents.filter(d => d.id !== docId) } : sec)
-    );
-    showToast('Documento rimosso.');
+  const handleDeleteDocument = async (secId: string, document: any) => {
+    if (!user || user.role !== 'admin' || !adminMode) return;
+    if (!confirm(`Eliminare “${document.title}” dal sito?`)) return;
+
+    try {
+      if (typeof document.url === 'string' && document.url.startsWith('/api/documents/media?')) {
+        const fileUrl = new URL(document.url, window.location.origin);
+        const pathname = fileUrl.searchParams.get('pathname');
+        if (pathname) {
+          const response = await fetch('/api/documents/media', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ pathname }),
+          });
+          const result = await response.json().catch(() => null);
+          if (!response.ok) throw new Error(result?.error || 'Impossibile eliminare il file online.');
+        }
+      }
+      setSections(prev =>
+        prev.map(sec => sec.id === secId ? { ...sec, documents: sec.documents.filter(d => d.id !== document.id) } : sec)
+      );
+      showToast('Documento e file rimossi dal sito.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossibile eliminare il documento.');
+    }
   };
 
   const handleArticleContentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1866,6 +1895,11 @@ export default function FitaTaekwondoApp() {
                           >
                             <Download className="w-3.5 h-3.5" /> Scarica
                           </a>
+                          {user?.role === 'admin' && adminMode && (
+                            <button type="button" onClick={() => handleDeleteDocument(currentSection.id, doc)} aria-label={`Elimina ${doc.title}`} title="Elimina documento" className="ml-1 rounded-lg p-1.5 text-red-600 hover:bg-red-50">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
