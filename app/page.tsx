@@ -525,9 +525,11 @@ export default function FitaTaekwondoApp() {
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [showcaseFormOpen, setShowcaseFormOpen] = useState(false);
+  const [editingShowcaseVideoId, setEditingShowcaseVideoId] = useState<string | null>(null);
   const [showcaseTitle, setShowcaseTitle] = useState('');
   const [showcaseUrl, setShowcaseUrl] = useState('');
   const [showcaseComment, setShowcaseComment] = useState('');
+  const [showcaseGroup, setShowcaseGroup] = useState('');
   const [movingArticle, setMovingArticle] = useState<{ id: string; title: string; sourceSectionId: string } | null>(null);
   const [moveTargetSectionId, setMoveTargetSectionId] = useState('');
 
@@ -985,28 +987,56 @@ export default function FitaTaekwondoApp() {
 
   const handleSaveShowcaseVideo = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user || user.role !== 'admin' || !adminMode) return;
     const title = showcaseTitle.trim();
     const url = showcaseUrl.trim();
     if (!title || !url) return;
     let parsedUrl: URL;
     try { parsedUrl = new URL(url); } catch { showToast('Inserisci un link video valido.'); return; }
     if (!['https:', 'http:'].includes(parsedUrl.protocol)) { showToast('Inserisci un link video valido.'); return; }
+    const editingId = editingShowcaseVideoId;
     const video = {
-      id: 'showcase-' + Date.now(),
+      id: editingId || 'showcase-' + Date.now(),
       title,
       url: parsedUrl.toString(),
       comment: showcaseComment.trim(),
+      group: showcaseGroup.trim(),
       addedAt: new Date().toISOString()
     };
-    setSections(prev => prev.map(section => section.id === activeSectionId
-      ? { ...section, showcaseVideos: [video, ...((section as any).showcaseVideos || [])] }
-      : section
-    ));
+    setSections(prev => prev.map(section => {
+      if (section.id !== activeSectionId) return section;
+      const videos = (section as any).showcaseVideos || [];
+      return {
+        ...section,
+        showcaseVideos: editingId
+          ? videos.map((item: any) => item.id === editingId ? { ...item, ...video, addedAt: item.addedAt } : item)
+          : [video, ...videos]
+      };
+    }));
     setShowcaseTitle('');
     setShowcaseUrl('');
     setShowcaseComment('');
+    setShowcaseGroup('');
+    setEditingShowcaseVideoId(null);
     setShowcaseFormOpen(false);
-    showToast('Video aggiunto.');
+    showToast(editingId ? 'Modifiche salvate.' : 'Video aggiunto.');
+  };
+
+  const moveShowcaseVideo = (videoId: string, direction: -1 | 1, groupName: string) => {
+    if (!user || user.role !== 'admin' || !adminMode) return;
+    setSections(prev => prev.map(section => {
+      if (section.id !== activeSectionId) return section;
+      const videos = [...((section as any).showcaseVideos || [])];
+      const groupIndices = videos.flatMap((video: any, index: number) =>
+        ((String(video.group || '').trim() || 'Generale') === groupName) ? [index] : []
+      );
+      const groupPosition = groupIndices.findIndex(index => videos[index].id === videoId);
+      const nextIndex = groupIndices[groupPosition + direction];
+      if (groupPosition < 0 || nextIndex === undefined) return section;
+      const currentIndex = groupIndices[groupPosition];
+      [videos[currentIndex], videos[nextIndex]] = [videos[nextIndex], videos[currentIndex]];
+      return { ...section, showcaseVideos: videos };
+    }));
   };
 
   const handleSaveDocument = (e: React.FormEvent) => {
@@ -2109,7 +2139,23 @@ export default function FitaTaekwondoApp() {
                       <p className="mt-0.5 text-xs text-slate-500">Video con commenti e dimostrazioni.</p>
                     </div>
                     {user?.role === 'admin' && adminMode && (
-                      <button type="button" onClick={() => setShowcaseFormOpen(value => !value)} className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-xs font-bold text-white">
+                      <button type="button" onClick={() => {
+                        if (showcaseFormOpen) {
+                          setShowcaseFormOpen(false);
+                          setEditingShowcaseVideoId(null);
+                          setShowcaseTitle('');
+                          setShowcaseUrl('');
+                          setShowcaseComment('');
+                          setShowcaseGroup('');
+                        } else {
+                          setEditingShowcaseVideoId(null);
+                          setShowcaseTitle('');
+                          setShowcaseUrl('');
+                          setShowcaseComment('');
+                          setShowcaseGroup('');
+                          setShowcaseFormOpen(true);
+                        }
+                      }} className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-xs font-bold text-white">
                         {showcaseFormOpen ? 'Annulla' : '+ Aggiungi video'}
                       </button>
                     )}
@@ -2120,21 +2166,31 @@ export default function FitaTaekwondoApp() {
                       <label className="block text-xs font-bold text-slate-600">Titolo video
                         <input required value={showcaseTitle} onChange={event => setShowcaseTitle(event.target.value)} placeholder="Es. Calcio girato in salto" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
                       </label>
-                      <label className="block text-xs font-bold text-slate-600">Link video (YouTube, Vimeo o file MP4)
+                      <label className="block text-xs font-bold text-slate-600">Link video (YouTube, Vimeo, Instagram, TikTok o file MP4)
                         <input required type="url" value={showcaseUrl} onChange={event => setShowcaseUrl(event.target.value)} placeholder="https://…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
                       </label>
                       <label className="block text-xs font-bold text-slate-600">Commento
                         <textarea value={showcaseComment} onChange={event => setShowcaseComment(event.target.value)} rows={3} placeholder="Descrivi cosa mostra il video…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
                       </label>
-                      <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">Salva video</button>
+                      <label className="block text-xs font-bold text-slate-600">Sezione <span className="font-normal text-slate-400">(facoltativa)</span>
+                        <input value={showcaseGroup} onChange={event => setShowcaseGroup(event.target.value)} placeholder="Es. Calci girati, Equilibrio…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+                        <span className="mt-1 block font-normal text-slate-500">I video con la stessa sezione appariranno raggruppati insieme.</span>
+                      </label>
+                      <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">{editingShowcaseVideoId ? 'Salva modifiche' : 'Salva video'}</button>
                     </form>
                   )}
 
                   {((currentSection as any).showcaseVideos || []).length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500">Non ci sono ancora video in questa sezione.</div>
                   ) : (
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                      {((currentSection as any).showcaseVideos || []).map((video: any) => {
+                    <div className="space-y-6">
+                      {[...new Set(((currentSection as any).showcaseVideos || []).map((video: any) => String(video.group || '').trim() || 'Generale'))].map(groupName => {
+                        const groupVideos = ((currentSection as any).showcaseVideos || []).filter((video: any) => (String(video.group || '').trim() || 'Generale') === groupName);
+                        return (
+                          <section key={groupName} className="space-y-3">
+                            <h4 className="border-b border-slate-200 pb-1 text-xs font-bold uppercase tracking-wide text-slate-600">{groupName}</h4>
+                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                              {groupVideos.map((video: any, videoIndex: number) => {
                         const embedUrl = getShowcaseEmbedUrl(video.url);
                         let isPortraitEmbed = false;
                         try {
@@ -2159,16 +2215,38 @@ export default function FitaTaekwondoApp() {
                                 {video.comment && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{video.comment}</p>}
                                 <a href={video.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900">Apri video originale</a>
                               </div>
-                              {user?.role === 'admin' && adminMode && <button type="button" onClick={() => {
-                                if (!confirm('Rimuovere questo video?')) return;
-                                setSections(prev => prev.map(section => section.id === activeSectionId
-                                  ? { ...section, showcaseVideos: ((section as any).showcaseVideos || []).filter((item: any) => item.id !== video.id) }
-                                  : section
-                                ));
-                                showToast('Video rimosso.');
-                              }} aria-label="Rimuovi video" className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
+                              {user?.role === 'admin' && adminMode && (
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <button type="button" disabled={videoIndex === 0} onClick={() => moveShowcaseVideo(video.id, -1, groupName)} aria-label={`Sposta ${video.title} in alto`} title="Sposta in alto" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-4 w-4 rotate-180" /></button>
+                                  <button type="button" disabled={videoIndex === groupVideos.length - 1} onClick={() => moveShowcaseVideo(video.id, 1, groupName)} aria-label={`Sposta ${video.title} in basso`} title="Sposta in basso" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+                                  <button type="button" onClick={() => {
+                                    setEditingShowcaseVideoId(video.id);
+                                    setShowcaseTitle(video.title || '');
+                                    setShowcaseUrl(video.url || '');
+                                    setShowcaseComment(video.comment || '');
+                                    setShowcaseGroup(video.group || '');
+                                    setShowcaseFormOpen(true);
+                                  }} aria-label={`Modifica ${video.title}`} title="Modifica video" className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-700"><Edit3 className="h-4 w-4" /></button>
+                                  <button type="button" onClick={() => {
+                                    if (!confirm('Rimuovere questo video?')) return;
+                                    setSections(prev => prev.map(section => section.id === activeSectionId
+                                      ? { ...section, showcaseVideos: ((section as any).showcaseVideos || []).filter((item: any) => item.id !== video.id) }
+                                      : section
+                                    ));
+                                    if (editingShowcaseVideoId === video.id) {
+                                      setEditingShowcaseVideoId(null);
+                                      setShowcaseFormOpen(false);
+                                    }
+                                    showToast('Video rimosso.');
+                                  }} aria-label="Rimuovi video" title="Rimuovi video" className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                                </div>
+                              )}
                             </div>
                           </article>
+                              );
+                              })}
+                            </div>
+                          </section>
                         );
                       })}
                     </div>
