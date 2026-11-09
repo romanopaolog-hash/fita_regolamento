@@ -1804,12 +1804,15 @@ export default function FitaTaekwondoApp() {
                                 <BookOpen className="w-4 h-4" />
                               </div>
                               <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <h3 className={`text-xs sm:text-base font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className={`text-xs sm:text-base font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
+                                    {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
+                                    {(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
+                                  </div>
                                   <span className="text-[10px] font-medium text-slate-400">
-                                    {(sub as any).addedAt ? `Aggiunto a ${new Date((sub as any).addedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}` : 'Data di inserimento non disponibile'}
+                                    {(sub as any).addedAt ? `Aggiunto il ${new Date((sub as any).addedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}` : 'Data di inserimento non disponibile'}
                                   </span>
-                                  {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}{(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
                                 </div>
                                 {sub.tags && (
                                   <div className="flex flex-wrap gap-1 mt-0.5">
