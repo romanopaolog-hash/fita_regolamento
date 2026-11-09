@@ -1,4 +1,4 @@
-import { get, put } from '@vercel/blob';
+import { del, get, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from '../../../../lib/account-approval';
 
@@ -88,5 +88,29 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('[documents] download failed', error);
     return new Response('Impossibile scaricare il documento.', { status: 503, headers: noStore });
+  }
+}
+
+
+export async function DELETE(request: Request) {
+  if (!sameOrigin(request)) {
+    return Response.json({ error: 'Richiesta non valida.' }, { status: 403, headers: noStore });
+  }
+  try {
+    const access = await getApprovedUser();
+    if ('response' in access) return access.response;
+    if (access.user.publicMetadata.role !== 'admin') {
+      return Response.json({ error: 'Permessi admin richiesti.' }, { status: 403, headers: noStore });
+    }
+    const payload = await request.json() as { pathname?: unknown };
+    const pathname = payload.pathname;
+    if (typeof pathname !== 'string' || !pathname.startsWith(DOCUMENT_PREFIX) || pathname.includes('..') || pathname.includes('\\')) {
+      return Response.json({ error: 'Documento non valido.' }, { status: 400, headers: noStore });
+    }
+    await del(pathname);
+    return Response.json({ ok: true }, { headers: noStore });
+  } catch (error) {
+    console.error('[documents] delete failed', error);
+    return Response.json({ error: 'Impossibile eliminare il file online.' }, { status: 503, headers: noStore });
   }
 }
