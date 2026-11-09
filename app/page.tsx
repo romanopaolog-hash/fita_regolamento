@@ -1810,9 +1810,6 @@ export default function FitaTaekwondoApp() {
                                     {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
                                     {(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
                                   </div>
-                                  <span className="text-[10px] font-medium text-slate-400">
-                                    {(sub as any).addedAt ? `Aggiunto il ${new Date((sub as any).addedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}` : 'Data di inserimento non disponibile'}
-                                  </span>
                                 </div>
                                 {sub.tags && (
                                   <div className="flex flex-wrap gap-1 mt-0.5">
@@ -1870,10 +1867,11 @@ export default function FitaTaekwondoApp() {
                                 {renderRichContent(sub.content, openLinkedArticle)}
                               </div>
 
-                              {(sub as any).source?.trim() && (
-                                <p className="mt-3 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
-                                  <span className="font-semibold text-slate-600">Fonte / riferimento:</span> {(sub as any).source}
-                                </p>
+                              {((sub as any).source?.trim() || (sub as any).addedAt) && (
+                                <div className="mt-3 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
+                                  {(sub as any).addedAt && <p><span className="font-semibold text-slate-600">Aggiunto il:</span> {new Date((sub as any).addedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
+                                  {(sub as any).source?.trim() && <p className="mt-1"><span className="font-semibold text-slate-600">Fonte / riferimento:</span> {(sub as any).source}</p>}
+                                </div>
                               )}
 
                               {sub.media && sub.media.length > 0 && (
