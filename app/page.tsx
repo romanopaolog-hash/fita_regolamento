@@ -60,7 +60,7 @@ Testo completo dell'articolo.
 
 const BULK_ARTICLE_PROMPT = `Estrai dal materiale fornito gli articoli del regolamento. Le descrizioni devono essere ampie e dettagliate, ma ogni informazione deve essere esplicitamente supportata dal materiale: non inventare, non dedurre, non completare con conoscenze esterne. Questa regola è fondamentale. Se un dato, un requisito o un'eccezione non è presente o non è leggibile con certezza, omettilo; non indovinare. Mantieni fedelmente numeri, condizioni, eccezioni, unità di misura, termini e ambito di applicazione. Non sintetizzare al punto da perdere dettagli rilevanti.
 
-Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. Nel testo dell'articolo, usa # Titolo per un titolo interno e ## Sottotitolo per un sottotitolo, ciascuno da solo su una riga; il sito li mostrerà con gerarchia visiva distinta. Il campo Titolo deve contenere solo l'argomento specifico: non inserire numeri o diciture come “Articolo 1”, “Articolo 2” o “Articolo 1 - ...”. Se la fonte è un regolamento ufficiale, nel campo Fonte cita il numero o riferimento dell'articolo originale solo quando è chiaramente presente nel materiale. Non inventare numeri o riferimenti; se non sono presenti, lascia Fonte vuota oppure indica soltanto il nome della fonte fornita.
+Dividi il testo in articoli autonomi e restituisci SOLO i blocchi nel formato seguente. Ripeti il blocco per ogni articolo. Nel testo dell'articolo, usa # Titolo per un titolo interno, ## Sottotitolo per un sottotitolo e ### Sezione per una sotto-sezione del sottotitolo, ciascuno da solo su una riga; il sito li mostrerà con gerarchia visiva distinta. Il campo Titolo deve contenere solo l'argomento specifico: non inserire numeri o diciture come “Articolo 1”, “Articolo 2” o “Articolo 1 - ...”. Se la fonte è un regolamento ufficiale, nel campo Fonte cita il numero o riferimento dell'articolo originale solo quando è chiaramente presente nel materiale. Non inventare numeri o riferimenti; se non sono presenti, lascia Fonte vuota oppure indica soltanto il nome della fonte fornita.
 
 Quando il contenuto richiede un elenco, usa il formato riconosciuto dal sito: per i punti elenco scrivi ESATTAMENTE “- ” all'inizio di ogni elemento; per un elenco numerato scrivi “1. ”, “2. ”, “3. ” e continua la numerazione in ordine. Metti ogni elemento su una riga separata e lascia una riga vuota prima e dopo l'elenco. Il sito mostrerà questi elementi come un vero elenco puntato o numerato. Non usare simboli, numerazioni, rientri o formati alternativi, e non mettere più elementi sulla stessa riga. Usa un elenco solo se la fonte lo giustifica. Se una linea separatrice aiuta la lettura, scrivi esattamente --- da solo su una riga: il sito lo mostra come una linea sottile. I tag sono facoltativi. Non usare i marcatori di inizio o fine articolo dentro il testo.
 
@@ -168,20 +168,20 @@ function renderFormattedText(content: string, onArticleLink?: (id: string) => vo
 function renderRichContent(content: string, onArticleLink?: (id: string) => void): React.ReactNode[] {
   type ListItem = { text: string; children: ListBlock[] };
   type ListBlock = { type: 'unordered' | 'ordered'; indent: number; start: number; items: ListItem[] };
-  type RenderBlock = { type: 'paragraph'; lines: string[] } | { type: 'list'; list: ListBlock } | { type: 'divider' } | { type: 'heading'; level: 1 | 2; text: string };
+  type RenderBlock = { type: 'paragraph'; lines: string[] } | { type: 'list'; list: ListBlock } | { type: 'divider' } | { type: 'heading'; level: 1 | 2 | 3; text: string };
   const blocks: RenderBlock[] = [];
   const listStack: Array<{ indent: number; list: ListBlock; container: ListBlock[] }> = [];
   let paragraph: string[] | null = null;
 
   for (const line of content.split(/\r?\n/)) {
-    const heading = line.match(/^\s*(#{1,2})\s+(.+?)\s*#*\s*$/);
+    const heading = line.match(/^\s*(#{1,3})\s+(.+?)\s*#*\s*$/);
     if (heading) {
       if (paragraph) {
         blocks.push({ type: 'paragraph', lines: paragraph });
         paragraph = null;
       }
       listStack.length = 0;
-      blocks.push({ type: 'heading', level: heading[1].length as 1 | 2, text: heading[2] });
+      blocks.push({ type: 'heading', level: heading[1].length as 1 | 2 | 3, text: heading[2] });
       continue;
     }
     if (/^---{1,}$/.test(line.trim())) {
@@ -257,7 +257,9 @@ function renderRichContent(content: string, onArticleLink?: (id: string) => void
     : block.type === 'heading'
       ? block.level === 1
         ? <h3 key={index} className="mb-2 mt-4 text-base font-bold text-[#0B1B3D]">{renderFormattedText(block.text, onArticleLink)}</h3>
-        : <h4 key={index} className="mb-1 mt-3 text-sm font-semibold text-slate-800">{renderFormattedText(block.text, onArticleLink)}</h4>
+        : block.level === 2
+          ? <h4 key={index} className="mb-1 mt-3 text-sm font-semibold text-slate-800">{renderFormattedText(block.text, onArticleLink)}</h4>
+          : <h5 key={index} className="mb-1 mt-2 text-sm font-medium text-slate-600">{renderFormattedText(block.text, onArticleLink)}</h5>
       : block.type === 'list'
         ? renderList(block.list, `list-${index}`)
         : <p key={index} className="my-1">{block.lines.map((line, lineIndex) => <React.Fragment key={lineIndex}>{lineIndex > 0 && <br />}{renderFormattedText(line, onArticleLink)}</React.Fragment>)}</p>
@@ -1059,6 +1061,26 @@ export default function FitaTaekwondoApp() {
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(start + opening.length, start + opening.length + selected.length);
+    });
+  };
+
+  const insertBulletAtCursor = () => {
+    const textarea = articleContentInputRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = formContent.slice(0, start);
+    const after = formContent.slice(end);
+    const prefix = !before || before.endsWith('\n') ? '' : '\n';
+    const insertion = `${prefix}• `;
+    const updated = `${before}${insertion}${after}`;
+    const caret = start + insertion.length;
+    const scrollTop = textarea.scrollTop;
+    setFormContent(updated);
+    requestAnimationFrame(() => {
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(caret, caret);
+      textarea.scrollTop = scrollTop;
     });
   };
 
@@ -2271,7 +2293,7 @@ export default function FitaTaekwondoApp() {
                       <button type="button" onClick={() => applyContentFormat('italic')} title="Corsivo" aria-label="Applica corsivo" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm italic text-slate-700 hover:bg-slate-50">I</button>
                       <button type="button" onClick={() => applyContentFormat('underline')} title="Sottolineato" aria-label="Applica sottolineato" className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm underline text-slate-700 hover:bg-slate-50">U</button>
                       <button type="button" onClick={() => insertContentLink('article')} title="Inserisci collegamento a un articolo o sito web" className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><LinkIcon className="inline h-3.5 w-3.5" /> Link</button>
-                      <button type="button" onClick={() => setFormContent(current => current + (current && !current.endsWith(String.fromCharCode(10)) ? String.fromCharCode(10) : '') + '• ')} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
+                      <button type="button" onClick={insertBulletAtCursor} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Inserisci punto elenco</button>
                       <button type="button" onClick={insertDividerAtCursor} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">+ Separatore</button>
                     </div>
                   </div>
