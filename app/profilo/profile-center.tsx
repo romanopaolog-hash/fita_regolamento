@@ -5,6 +5,9 @@ import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { UserProfile, useClerk, useUser } from '@clerk/nextjs';
 
+import { ArrowLeft, ShieldCheck, UserRound } from 'lucide-react';
+import { formatPersonName } from '../../lib/format-person-name';
+
 const regions = [
   'Campania', 'Lazio', 'Lombardia', 'Piemonte', 'Sicilia',
   'Veneto', 'Emilia-Romagna', 'Puglia', 'Toscana',
@@ -146,19 +149,13 @@ export default function ProfileCenter() {
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-[#A60F2D]">Area riservata</p>
             <h1 className="mt-1 text-2xl font-black text-[#0B1B3D]">Profilo e sicurezza</h1>
-            <p className="mt-1 text-sm text-slate-600">{user.primaryEmailAddress?.emailAddress}</p>
+            <p className="mt-1 break-all text-sm text-slate-600">{user.primaryEmailAddress?.emailAddress}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Torna al regolamento</Link>
-            <button type="button" onClick={logout} className="rounded-lg bg-[#0B1B3D] px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Esci</button>
+            <Link href="/" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#0B1B3D] px-4 py-2 text-sm font-bold text-white hover:bg-slate-800"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> Torna al regolamento</Link>
+            <button type="button" onClick={logout} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Esci</button>
           </div>
         </header>
-
-        <section aria-labelledby="account-security-title" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <h2 id="account-security-title" className="mb-4 text-lg font-bold text-[#0B1B3D]">Email, password e account</h2>
-          <p className="mb-4 text-sm text-slate-600">Gestisci l’indirizzo email, verifica le modifiche e aggiorna la password. Clerk ti guiderà nei passaggi di conferma.</p>
-          <UserProfile />
-        </section>
 
         <section aria-labelledby="fita-region-title" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 id="fita-region-title" className="text-lg font-bold text-[#0B1B3D]">Dati FITA</h2>
@@ -195,20 +192,25 @@ export default function ProfileCenter() {
             )}
             {managedUsers.length > 0 && (
               <ul className="mt-4 divide-y divide-slate-200 rounded-lg border border-slate-200">
-                {managedUsers.map(managedUser => {
+                {[...managedUsers].sort((a, b) => {
+                  if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
+                  return a.name.localeCompare(b.name, 'it', { sensitivity: 'base' });
+                }).map(managedUser => {
                   const isCurrentUser = managedUser.id === user.id;
                   const isBusy = userActionId === managedUser.id;
                   return (
-                    <li key={managedUser.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+                    <li key={managedUser.id} className={`flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4 ${managedUser.role === 'admin' ? 'bg-amber-50/60' : ''}`}>
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-900">{managedUser.name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="break-words font-semibold text-slate-900">{formatPersonName(managedUser.name)}</p>
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-bold ${managedUser.role === 'admin' ? 'border-amber-300 bg-amber-100 text-amber-950' : 'border-slate-200 bg-slate-100 text-slate-700'}`}>
+                            {managedUser.role === 'admin' ? <><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /> Admin</> : <><UserRound className="h-3.5 w-3.5" aria-hidden="true" /> Utente</>}
+                          </span>
+                        </div>
                         <p className="break-all text-sm text-slate-600">{managedUser.email}</p>
                         <p className="mt-1 text-xs text-slate-500">Creato il {new Date(managedUser.createdAt).toLocaleDateString('it-IT')}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={managedUser.role === 'admin' ? 'rounded-full bg-[#FCECEF] px-2.5 py-1 text-xs font-bold text-[#A60F2D]' : 'rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700'}>
-                          {managedUser.role === 'admin' ? 'Admin' : 'Utente'}
-                        </span>
                         <button type="button" onClick={() => void updateUserRole(managedUser)} disabled={Boolean(userActionId) || isCurrentUser} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                           {isBusy ? 'Salvataggio…' : managedUser.role === 'admin' ? 'Rimuovi admin' : 'Rendi admin'}
                         </button>
@@ -229,6 +231,22 @@ export default function ProfileCenter() {
             )}
           </section>
         )}
+
+        <section aria-labelledby="account-security-title" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <h2 id="account-security-title" className="mb-4 text-lg font-bold text-[#0B1B3D]">Email, password e account</h2>
+          <p className="mb-4 text-sm text-slate-600">Gestisci l’indirizzo email, verifica le modifiche e aggiorna la password. Clerk ti guiderà nei passaggi di conferma.</p>
+          <UserProfile appearance={{ elements: {
+            rootBox: 'w-full min-w-0 max-w-full',
+            cardBox: 'w-full min-w-0 max-w-full',
+            card: 'w-full min-w-0 max-w-full',
+            navbar: 'min-w-0 max-w-full',
+            pageScrollBox: 'w-full min-w-0 max-w-full px-2 sm:px-6',
+            profileSectionContent: 'min-w-0 max-w-full [overflow-wrap:anywhere]',
+            profileSectionItem: 'min-w-0 max-w-full flex-wrap',
+            profileSectionPrimaryButton: 'max-w-full whitespace-normal',
+          } }} />
+        </section>
+
       </div>
     </main>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { SignIn, SignUp, useClerk, useUser } from '@clerk/nextjs';
+import { SignIn, useClerk, useUser } from '@clerk/nextjs';
 import { getAccountApprovalStatus } from '../lib/account-approval';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -23,7 +23,6 @@ import {
   Upload,
   Link as LinkIcon,
   Bell,
-  BellOff,
   FileText,
   Download,
   Calendar,
@@ -42,6 +41,11 @@ import {
   Pin,
   AlertTriangle
 } from 'lucide-react';
+
+import { RegistrationForm, authAppearance } from './registration-form';
+import { formatPersonName } from '../lib/format-person-name';
+
+type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
 
 type AdminApprovalRequest = {
   id: string;
@@ -515,7 +519,10 @@ export default function FitaTaekwondoApp() {
   const [isSelectingArticles, setIsSelectingArticles] = useState(false);
   const [selectedArticleIds, setSelectedArticleIds] = useState<string[]>([]);
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({});
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationSeenAt, setNotificationSeenAt] = useState(0);
+  const [notificationItems, setNotificationItems] = useState<PortalNotice[]>([]);
+  const [notificationPreferenceBusy, setNotificationPreferenceBusy] = useState(false);
 
   const [adminMode, setAdminMode] = useState(true);
 
@@ -837,10 +844,79 @@ export default function FitaTaekwondoApp() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const toggleNotifications = () => {
-    const nextState = !notificationsEnabled;
-    setNotificationsEnabled(nextState);
-    showToast(nextState ? '🔔 Notifiche Attivate' : '🔕 Notifiche Disattivate');
+  const newsNotificationsEnabled = clerkUser?.unsafeMetadata.newsNotifications === true;
+  const canReadNotifications = Boolean(clerkUser && getAccountApprovalStatus(clerkUser) === 'approved');
+  const noticeStorageKey = clerkUser ? `tkd_notice_seen_${clerkUser.id}` : '';
+
+  useEffect(() => {
+    setNotificationSeenAt(0);
+    setNotificationItems([]);
+    try {
+      if (noticeStorageKey) setNotificationSeenAt(Number(localStorage.getItem(noticeStorageKey)) || 0);
+    } catch {}
+  }, [noticeStorageKey]);
+
+  useEffect(() => {
+    if (!noticeStorageKey || !canReadNotifications) return;
+    let active = true;
+    const refresh = async () => {
+      if (document.visibilityState === 'hidden') return;
+      const read = async (path: string) => {
+        const response = await fetch(path, { cache: 'no-store' });
+        if (!response.ok) throw new Error('Notifiche non disponibili');
+        return response.json();
+      };
+      try {
+        const [articles, news] = await Promise.all([
+          read('/api/articles'),
+          newsNotificationsEnabled ? read('/api/news') : Promise.resolve(null)
+        ]);
+        const notices: PortalNotice[] = [];
+        for (const section of articles.sections ?? []) {
+          if (section.hidden) continue;
+          for (const article of section.subsections) {
+            const at = Date.parse(article.notifiedAt);
+            if (!article.hidden && Number.isFinite(at)) {
+              notices.push({ id: `article-${article.id}`, kind: 'Articolo', title: article.title, at });
+            }
+          }
+        }
+        for (const item of news?.news ?? []) {
+          const at = Date.parse(item.publishedAt);
+          if (Number.isFinite(at)) notices.push({ id: `news-${item.id}`, kind: 'News', title: item.title, at });
+        }
+        if (active) setNotificationItems(notices.sort((a, b) => b.at - a.at).slice(0, 30));
+      } catch {}
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 90_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [noticeStorageKey, canReadNotifications, newsNotificationsEnabled, notificationsOpen]);
+
+  const visibleNotices = notificationItems.filter(item => item.kind !== 'News' || newsNotificationsEnabled);
+  const unreadNotices = visibleNotices.filter(item => item.at > notificationSeenAt).length;
+
+  const markNoticesRead = () => {
+    const latest = Math.max(notificationSeenAt, ...visibleNotices.map(item => item.at));
+    setNotificationSeenAt(latest);
+    try { localStorage.setItem(noticeStorageKey, String(latest)); } catch {}
+  };
+
+  const toggleNewsNotifications = async () => {
+    if (!clerkUser || notificationPreferenceBusy) return;
+    setNotificationPreferenceBusy(true);
+    try {
+      await clerkUser.update({ unsafeMetadata: { ...clerkUser.unsafeMetadata, newsNotifications: !newsNotificationsEnabled } });
+    } catch {
+      showToast('Impossibile salvare la preferenza delle notifiche.');
+    } finally {
+      setNotificationPreferenceBusy(false);
+    }
   };
 
   const toggleFavorite = (id: string) => {
@@ -985,6 +1061,7 @@ export default function FitaTaekwondoApp() {
       id: 'news-' + Date.now(),
       title: newsTitle,
       category: newsCategory,
+      publishedAt: new Date().toISOString(),
       date: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }),
       location: newsLocation || 'Nazionale',
       content: newsContent,
@@ -1307,7 +1384,9 @@ export default function FitaTaekwondoApp() {
   const handleSaveSubsection = (e: React.FormEvent) => {
     e.preventDefault();
     if (isUploadingArticleMedia || !formTitle.trim() || !formContent.trim()) return;
+    const notify = new FormData(e.currentTarget as HTMLFormElement).has('notifyArticle');
     const newSub = {
+      notifiedAt: editingSubsection?.notifiedAt ?? (!editingSubsection && notify ? new Date().toISOString() : undefined),
       id: editingSubsection ? editingSubsection.id : 'sub_' + Date.now(),
       addedAt: (editingSubsection as any)?.addedAt ?? new Date().toISOString(),
       hidden: (editingSubsection as any)?.hidden ?? false,
@@ -1571,14 +1650,14 @@ export default function FitaTaekwondoApp() {
   if (!clerkUser) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F4F6F9] p-4">
-        <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+        <section className="w-full min-w-0 max-w-md rounded-2xl border border-slate-200 bg-white p-3 shadow-xl sm:p-6">
           <h1 className="mb-1 text-xl font-black text-[#0B1B3D]">FITA Regolamento</h1>
           <p className="mb-5 text-sm text-slate-600">Accedi o crea un account per consultare il sito.</p>
           <div className="mb-4 flex gap-2">
             <button type="button" onClick={() => setAuthMode('login')} className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${authMode === 'login' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Accedi</button>
             <button type="button" onClick={() => setAuthMode('register')} className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${authMode === 'register' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Registrati</button>
           </div>
-          {authMode === 'login' ? <SignIn routing="hash" signUpUrl="/sign-up" /> : <SignUp routing="hash" signInUrl="/sign-in" />}
+          {authMode === 'login' ? <SignIn routing="hash" signUpUrl="/sign-up" appearance={authAppearance} /> : <RegistrationForm embedded />}
           <p className="mt-3 text-center text-xs text-slate-500">Il recupero password invia un codice all’email verificata.</p>
         </section>
       </main>
@@ -1654,9 +1733,9 @@ export default function FitaTaekwondoApp() {
                       Modalità {adminMode ? 'admin' : 'utente'}
                     </button>
                   )}
-                  <button onClick={openProfilePage} className="flex items-center gap-1 text-slate-200 hover:text-amber-400 font-semibold text-xs">
+                  <button onClick={openProfilePage} className="inline-flex items-center gap-2 rounded-full border border-slate-500 bg-white/10 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/20">
                     <Settings className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{user.firstName} {user.lastName}</span>
+                    <span>Area riservata · {formatPersonName([user.firstName, user.lastName].filter(Boolean).join(' ')) || 'Profilo'}</span>
                   </button>
 
 
@@ -1688,7 +1767,7 @@ export default function FitaTaekwondoApp() {
             </div>
 
             {isAccountAdmin && (
-              <button type="button" onClick={() => setAdminMode(mode => !mode)} aria-label={adminMode ? 'Passa alla modalità utente' : 'Torna alla modalità admin'} className="min-h-11 rounded-lg border border-slate-300 bg-slate-50 px-2.5 text-xs font-bold text-[#0B1B3D] md:hidden">
+              <button type="button" onClick={() => setAdminMode(mode => !mode)} aria-label={adminMode ? 'Passa alla modalità utente' : 'Torna alla modalità admin'} className={`min-h-11 rounded-lg border px-2.5 text-xs font-bold md:hidden ${adminMode ? 'border-amber-300 bg-amber-100 text-amber-950' : 'border-blue-300 bg-blue-100 text-blue-950'}`}>
                 Modalità {adminMode ? 'admin' : 'utente'} <span aria-hidden="true">⇄</span>
               </button>
             )}
@@ -1748,14 +1827,30 @@ export default function FitaTaekwondoApp() {
               </div>
 
 
-              <button
-                onClick={toggleNotifications}
-                className={`hidden md:flex h-9 px-3 rounded-lg border text-xs font-bold items-center gap-1.5 shadow-sm transition-all whitespace-nowrap ${
-                  notificationsEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-600 border-slate-300'
-                }`}
-              >
-                {notificationsEnabled ? <Bell className="w-4 h-4 text-emerald-600 fill-emerald-600/20" /> : <BellOff className="w-4 h-4 text-slate-400" />}
-              </button>
+              <div className="relative shrink-0">
+                <button type="button" onClick={() => setNotificationsOpen(open => !open)} aria-label={`Notifiche${unreadNotices ? `, ${unreadNotices} da leggere` : ''}`} aria-expanded={notificationsOpen} className="relative flex h-11 w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-[#0B1B3D] hover:bg-slate-100">
+                  <Bell className="h-5 w-5" aria-hidden="true" />
+                  {unreadNotices > 0 && <span aria-hidden="true" className="absolute right-0 top-0 rounded-full bg-[#A60F2D] px-1.5 text-[10px] font-bold text-white">{unreadNotices}</span>}
+                </button>
+                {notificationsOpen && (
+                  <section aria-label="Centro notifiche" className="fixed inset-x-3 top-28 z-50 max-h-[65dvh] overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-xl md:absolute md:inset-x-auto md:right-0 md:top-full md:mt-2 md:w-80">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="font-bold text-[#0B1B3D]">Notifiche</h2>
+                      <button type="button" onClick={() => setNotificationsOpen(false)} aria-label="Chiudi notifiche" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+                    </div>
+                    <label className="my-2 flex items-center gap-2 rounded-lg bg-slate-100 p-2 text-sm">
+                      <input type="checkbox" checked={newsNotificationsEnabled} disabled={notificationPreferenceBusy} onChange={() => void toggleNewsNotifications()} /> Ricevi notifiche per le news
+                    </label>
+                    {unreadNotices > 0 && <button type="button" onClick={markNoticesRead} className="py-2 text-sm font-semibold text-blue-800">Segna tutte come lette</button>}
+                    {visibleNotices.length ? <ul className="divide-y divide-slate-200">
+                      {visibleNotices.map(item => <li key={item.id} className="break-words py-2 text-sm">
+                        <p className="text-xs text-slate-600">{item.kind} · {new Date(item.at).toLocaleDateString('it-IT')}</p>
+                        <p className={item.at > notificationSeenAt ? 'font-bold text-[#0B1B3D]' : 'text-slate-700'}>{item.title}</p>
+                      </li>)}
+                    </ul> : <p className="py-3 text-sm text-slate-600">Non ci sono notifiche.</p>}
+                  </section>
+                )}
+              </div>
               {isAccountAdmin && adminMode && (
                 <button
                   type="button"
@@ -2591,6 +2686,11 @@ export default function FitaTaekwondoApp() {
               </div>
 
               <form onSubmit={handleSaveSubsection} className="space-y-3">
+                {!editingSubsection && (
+                  <label className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+                    <input type="checkbox" name="notifyArticle" /> Avvisa tutti gli utenti nel portale
+                  </label>
+                )}
                 <div>
                   <label htmlFor="article-title" className="block text-slate-600 font-bold mb-1">Titolo *</label>
                   <input id="article-title" type="text" required value={formTitle} onChange={(e) => setFormTitle(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 focus:outline-none focus:border-[#0B1B3D]" />
@@ -2779,7 +2879,7 @@ export default function FitaTaekwondoApp() {
           aria-label={user ? 'Area personale' : 'Accedi'}
           onClick={() => user ? openProfilePage() : (setAuthMode('login'), setAuthModalOpen(true))}
           className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg min-h-12 py-1 transition-colors ${
-            user ? 'text-emerald-300 font-bold' : 'text-slate-300'
+            user ? 'text-sky-200 font-bold' : 'text-slate-300'
           }`}
         >
           <User className="h-5 w-5" />
@@ -2889,7 +2989,7 @@ export default function FitaTaekwondoApp() {
                   approvalRequests.filter(request => request.status === approvalFilter).map(request => (
                     <article key={request.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <h3 className="truncate text-sm font-bold text-[#0B1B3D]">{request.name}</h3>
+                        <h3 className="truncate text-sm font-bold text-[#0B1B3D]">{formatPersonName(request.name)}</h3>
                         <p className="truncate text-xs text-slate-600">{request.email}</p>
                         <p className="mt-1 text-[10px] text-slate-400">Registrato il {new Date(request.createdAt).toLocaleDateString('it-IT')}</p>
                       </div>
@@ -2927,9 +3027,9 @@ export default function FitaTaekwondoApp() {
                 <button type="button" onClick={() => setAuthMode('register')} className={`flex-1 rounded-lg px-3 py-2 font-bold ${authMode === 'register' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Registrati</button>
               </div>
               {authMode === 'login' ? (
-                <SignIn routing="hash" signUpUrl="/sign-up" />
+                <SignIn routing="hash" signUpUrl="/sign-up" appearance={authAppearance} />
               ) : (
-                <SignUp routing="hash" signInUrl="/sign-in" />
+                <RegistrationForm embedded />
               )}
               <p className="mt-3 text-center text-[10px] text-slate-500">Il recupero password invia un codice all’email verificata.</p>
             </div>

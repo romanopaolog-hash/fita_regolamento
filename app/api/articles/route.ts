@@ -62,12 +62,13 @@ export async function GET() {
     const { sections, etag } = await readArticles();
     const visibleSections = isAdmin || !sections
       ? sections
-      : sections
-        .filter(section => section.hidden !== true)
-        .map(section => ({
-          ...section,
-          subsections: section.subsections.filter(article => article.hidden !== true),
-        }));
+      : sections.map(section => {
+        if (section.hidden === true) {
+          const { id, title, shortTitle, subtitle, code } = section;
+          return { id, title, shortTitle, subtitle, code, hidden: true, subsections: [], documents: [], showcaseVideos: [] };
+        }
+        return { ...section, subsections: section.subsections.filter(article => article.hidden !== true) };
+      });
 
     return Response.json({ sections: visibleSections, etag }, { headers: noStoreHeaders() });
   } catch {
