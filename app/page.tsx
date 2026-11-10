@@ -1984,7 +1984,7 @@ export default function FitaTaekwondoApp() {
         </nav>
 
         {/* --- CONTENUTO PRINCIPALE --- */}
-        <main className={`max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 w-full ${activeSectionId === 'home' ? '[(display-mode:standalone)]:min-h-[75dvh] [(display-mode:standalone)]:bg-[#111e38] [(display-mode:standalone)]:bg-[url(/fita-app-home-background.png)] [(display-mode:standalone)]:bg-[length:auto_clamp(12rem,65vw,22rem)] [(display-mode:standalone)]:bg-top [(display-mode:standalone)]:bg-no-repeat [(display-mode:standalone)]:pt-[calc(clamp(12rem,65vw,22rem)+0.75rem)]' : ''}`}>
+        <main className={`max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 w-full ${activeSectionId === 'home' ? '[@media(display-mode:standalone)]:min-h-[75dvh] [@media(display-mode:standalone)]:bg-[#111e38] [@media(display-mode:standalone)]:bg-[url(/fita-app-home-background.png)] [@media(display-mode:standalone)]:bg-[length:auto_clamp(12rem,65vw,22rem)] [@media(display-mode:standalone)]:bg-top [@media(display-mode:standalone)]:bg-no-repeat [@media(display-mode:standalone)]:pt-[calc(clamp(12rem,65vw,22rem)_+_0.75rem)]' : ''}`}>
           
           {/* HOME / NEWS */}
           {activeSectionId === 'home' && (
