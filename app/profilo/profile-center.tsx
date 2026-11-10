@@ -180,6 +180,9 @@ export default function ProfileCenter() {
                 <h2 id="user-management-title" className="text-lg font-bold text-[#0B1B3D]">Gestione utenti</h2>
                 <p className="mt-1 text-sm text-slate-600">Visualizza gli account, assegna o rimuovi il ruolo admin ed elimina gli account non più necessari.</p>
               </div>
+              <Link href="/?richieste=1" className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#0B1B3D] px-3 text-sm font-bold text-white hover:bg-slate-800">
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Richieste di accesso
+              </Link>
               <button type="button" onClick={() => { setUsersMessage(''); void loadUsers(0, false); }} disabled={usersLoading || Boolean(userActionId)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                 {usersLoading ? 'Aggiornamento…' : 'Aggiorna elenco'}
               </button>

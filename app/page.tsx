@@ -754,6 +754,17 @@ export default function FitaTaekwondoApp() {
 
   useEffect(() => {
     if (!isAccountAdmin) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('richieste') !== '1') return;
+    url.searchParams.delete('richieste');
+    window.history.replaceState(window.history.state, '', url);
+    setAdminMode(true);
+    setApprovalFilter('pending');
+    setIsApprovalPanelOpen(true);
+  }, [isAccountAdmin]);
+
+  useEffect(() => {
+    if (!isAccountAdmin) return;
     let active = true;
     setApprovalRequestsLoading(true);
     setApprovalRequestsError(null);
@@ -1890,24 +1901,7 @@ export default function FitaTaekwondoApp() {
                   </section>
                 )}
               </div>
-              {isAccountAdmin && adminMode && (
-                <button
-                  type="button"
-                  onClick={() => { setApprovalFilter('pending'); setIsApprovalPanelOpen(true); }}
-                  className="relative flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[#0B1B3D] bg-[#0B1B3D] px-2.5 text-xs font-bold text-white hover:bg-slate-800"
-                  aria-label={approvalRequests.filter(request => request.status === 'pending').length
-                    ? `Richieste di accesso, ${approvalRequests.filter(request => request.status === 'pending').length} in attesa`
-                    : 'Richieste di accesso'}
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  <span className="hidden sm:inline">Richieste</span>
-                  {approvalRequests.filter(request => request.status === 'pending').length > 0 && (
-                    <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] leading-none text-[#0B1B3D]">
-                      {approvalRequests.filter(request => request.status === 'pending').length}
-                    </span>
-                  )}
-                </button>
-              )}
+              <InstallAppButton />
             </div>
           </div>
         </header>
@@ -1966,7 +1960,6 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                  <InstallAppButton />
                   {/* FILTRI RIPRISTINATI: TUTTI, REGIONALE, NAZIONALE, REGOLAMENTO */}
                   <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-bold overflow-x-auto w-full sm:w-auto">
                     {['Tutti', 'Regionale', 'Nazionale', 'Regolamento'].map((cat) => (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Download, X } from 'lucide-react';
 
 type InstallPrompt = Event & {
@@ -62,10 +63,10 @@ export default function InstallAppButton() {
   if (installed) return null;
   return (
     <>
-      <button type="button" onClick={() => void install()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-950 hover:bg-blue-100">
-        <Download className="h-4 w-4" aria-hidden="true" /> Installa l’app
+      <button type="button" onClick={() => void install()} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] sm:px-3 sm:text-xs font-bold text-blue-950 hover:bg-blue-100">
+        <Download className="h-4 w-4" aria-hidden="true" /> Download app
       </button>
-      {showHelp && (
+      {showHelp && createPortal(
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">
           <section role="dialog" aria-modal="true" aria-label="Come installare FITA Regolamento" onKeyDown={event => { if (event.key === 'Escape') setShowHelp(false); }} className="w-full max-w-sm rounded-2xl bg-white p-5 text-left shadow-xl">
             <div className="flex items-center justify-between gap-3">
@@ -83,7 +84,7 @@ export default function InstallAppButton() {
             )}
             <p className="mt-3 text-sm text-slate-600">Apri FITA dalla nuova icona e accedi con il tuo account.</p>
           </section>
-        </div>
+        </div>, document.body
       )}
     </>
   );
