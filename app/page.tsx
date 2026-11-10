@@ -22,7 +22,7 @@ import {
   Sparkles,
   Upload,
   Link as LinkIcon,
-  Bell,
+
   FileText,
   Download,
   Calendar,
@@ -1870,7 +1870,7 @@ export default function FitaTaekwondoApp() {
 
               <div className="relative shrink-0">
                 <button type="button" onClick={() => setNotificationsOpen(open => !open)} aria-label={`Notifiche${unreadNotices ? `, ${unreadNotices} da leggere` : ''}`} aria-expanded={notificationsOpen} className="relative flex h-11 w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-[#0B1B3D] hover:bg-slate-100">
-                  <Bell className="h-5 w-5" aria-hidden="true" />
+                  <span aria-hidden="true" className="text-[10px] font-black leading-none tracking-tight">FITA</span>
                   {unreadNotices > 0 && <span aria-hidden="true" className="absolute right-0 top-0 rounded-full bg-[#A60F2D] px-1.5 text-[10px] font-bold text-white">{unreadNotices}</span>}
                 </button>
                 {notificationsOpen && (
