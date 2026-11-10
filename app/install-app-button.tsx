@@ -11,7 +11,7 @@ type InstallPrompt = Event & {
 
 export default function InstallAppButton() {
   const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
-  const [installed, setInstalled] = useState(false);
+  const [installed, setInstalled] = useState<boolean | null>(null);
   const [isAppleMobile, setIsAppleMobile] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -62,10 +62,10 @@ export default function InstallAppButton() {
     }
   };
 
-  if (installed) return null;
+  if (installed !== false) return null;
   return (
     <>
-      <button type="button" onClick={() => void install()} aria-label="Installa l’app" title="Installa l’app" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#0B1B3D] focus-visible:outline-2 focus-visible:outline-blue-600">
+      <button type="button" onClick={() => void install()} aria-label="Installa l’app" title="Installa l’app" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-800 transition-colors hover:bg-blue-100 hover:text-[#0B1B3D] focus-visible:outline-2 focus-visible:outline-blue-600">
         <Download className="h-4 w-4" aria-hidden="true" />
       </button>
       {showHelp && createPortal(
@@ -82,7 +82,7 @@ export default function InstallAppButton() {
                 <li>Attiva <strong>Apri come app web</strong> se compare e tocca <strong>Aggiungi</strong>.</li>
               </ol>
             ) : (
-              <p className="mt-3 text-sm text-slate-700">Su Android, apri questo sito in Chrome, apri il menu ⋮ e scegli <strong>Installa app</strong> oppure <strong>Aggiungi a schermata Home</strong>.</p>
+              <p className="mt-3 text-sm text-slate-700">In Chrome, apri il menu <strong>⋮</strong>, scegli <strong>Installa e crea scorciatoia</strong> e poi <strong>Installa</strong>. Se Chrome mostra direttamente <strong>Installa app</strong>, scegli quella voce.</p>
             )}
             <p className="mt-3 text-sm text-slate-600">Apri FITA dalla nuova icona e accedi con il tuo account.</p>
           </section>
