@@ -21,7 +21,7 @@ self.addEventListener('push', event => {
     await self.registration.showNotification(category ? 'FITA · ' + category : 'FITA Regolamento', {
       body: title || 'Nuova notizia nel portale FITA.',
       icon: '/fita-home-icon.png',
-      badge: '/fita-notification-badge.png?v=2',
+      badge: '/fita-notification-tie.png',
       tag: item?.id ? 'fita-' + item.id : 'fita-news',
     });
   })());
