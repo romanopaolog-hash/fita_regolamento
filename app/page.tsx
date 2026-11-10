@@ -496,6 +496,21 @@ export default function FitaTaekwondoApp() {
   const [activeTabMode, setActiveTabMode] = useState<'rules' | 'materials' | 'showcase'>('rules');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const articleSearchInputRef = useRef<HTMLInputElement>(null);
+  const [articleTextSize, setArticleTextSize] = useState(16);
+
+  useEffect(() => {
+    try {
+      const size = Number(window.localStorage.getItem('tkd_article_text_size'));
+      if ([14, 16, 18, 20, 22, 24].includes(size)) setArticleTextSize(size);
+    } catch {}
+  }, []);
+
+  const changeArticleTextSize = (step: -2 | 2) => {
+    const size = Math.max(14, Math.min(24, articleTextSize + step));
+    setArticleTextSize(size);
+    try { window.localStorage.setItem('tkd_article_text_size', String(size)); } catch {}
+  };
   const [isArticleSearchFocused, setIsArticleSearchFocused] = useState(false);
   const [isSelectingArticles, setIsSelectingArticles] = useState(false);
   const [selectedArticleIds, setSelectedArticleIds] = useState<string[]>([]);
@@ -1632,13 +1647,7 @@ export default function FitaTaekwondoApp() {
                   {user.role === 'admin' && (
                     <button
                       type="button"
-                      onClick={() => {
-                        const nextMode = !adminMode;
-                        if (!nextMode && activeSectionId !== 'home' && (sections.find(section => section.id === activeSectionId) as any)?.hidden) {
-                          setActiveSectionId('home');
-                        }
-                        setAdminMode(nextMode);
-                      }}
+                      onClick={() => setAdminMode(mode => !mode)}
                       aria-pressed={adminMode}
                       className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${adminMode ? 'border-amber-400/60 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20' : 'border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
                     >
@@ -1678,21 +1687,33 @@ export default function FitaTaekwondoApp() {
               </div>
             </div>
 
+            {isAccountAdmin && (
+              <button type="button" onClick={() => setAdminMode(mode => !mode)} aria-label={adminMode ? 'Passa alla modalità utente' : 'Torna alla modalità admin'} className="min-h-11 rounded-lg border border-slate-300 bg-slate-50 px-2.5 text-xs font-bold text-[#0B1B3D] md:hidden">
+                Modalità {adminMode ? 'admin' : 'utente'} <span aria-hidden="true">⇄</span>
+              </button>
+            )}
+
             <div className="flex w-full min-w-0 items-center gap-2 sm:ml-auto sm:max-w-md sm:flex-1">
               <div className="relative flex h-11 min-w-0 flex-1 items-center sm:h-9">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
+                  ref={articleSearchInputRef}
                   placeholder="Cerca norme..."
                   value={searchQuery}
                   onFocus={() => setIsArticleSearchFocused(true)}
                   onBlur={() => window.setTimeout(() => setIsArticleSearchFocused(false), 120)}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-full w-full bg-slate-100 border border-slate-300 rounded-lg pl-8 pr-2.5 text-base sm:text-sm text-slate-800 focus:outline-none focus:border-[#0B1B3D]"
+                  className="h-full w-full bg-slate-100 border border-slate-300 rounded-lg pl-8 pr-11 text-base sm:text-sm text-slate-800 focus:outline-none focus:border-[#0B1B3D]"
                   aria-label="Cerca articoli e norme"
                   aria-autocomplete="list"
                   aria-expanded={isArticleSearchFocused && articleSearchSuggestions.length > 0}
                 />
+                {searchQuery.length > 0 && (
+                  <button type="button" aria-label="Svuota ricerca" onClick={() => { setSearchQuery(''); articleSearchInputRef.current?.focus(); }} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-slate-600 hover:bg-slate-200">
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                )}
                 {isArticleSearchFocused && articleSearchSuggestions.length > 0 && (
                   <div className="absolute top-full left-0 right-0 z-50 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl" role="listbox" aria-label="Suggerimenti articoli">
                     {articleSearchSuggestions.map(({ section, sub }) => (
@@ -2132,7 +2153,12 @@ export default function FitaTaekwondoApp() {
 
                           {isOpen && (
                             <div className="p-3 sm:p-5 bg-slate-50 border-t border-slate-100 text-slate-700">
-                              <div className={`whitespace-pre-line [overflow-wrap:anywhere] text-base leading-relaxed [&_p]:my-3 [&_h4]:text-base [&_h5]:text-base ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
+                              <div role="group" aria-label="Dimensione testo dell’articolo" className="mb-3 flex items-center justify-end gap-2">
+                                <button type="button" onClick={() => changeArticleTextSize(-2)} disabled={articleTextSize <= 14} aria-label="Riduci il testo" className="min-h-11 min-w-11 rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold disabled:opacity-40">A−</button>
+                                <span aria-live="polite" className="min-w-10 text-center text-xs tabular-nums text-slate-600">{articleTextSize} px</span>
+                                <button type="button" onClick={() => changeArticleTextSize(2)} disabled={articleTextSize >= 24} aria-label="Ingrandisci il testo" className="min-h-11 min-w-11 rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold disabled:opacity-40">A+</button>
+                              </div>
+                              <div style={{ fontSize: articleTextSize }} className={`whitespace-pre-line [overflow-wrap:anywhere] leading-relaxed [&_p]:my-3 [&_h3]:text-[1.2em] [&_h4]:text-[1.1em] [&_h5]:text-[1em] ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
                                 {renderRichContent(sub.content, openLinkedArticle)}
                               </div>
 
