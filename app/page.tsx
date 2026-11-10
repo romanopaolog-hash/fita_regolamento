@@ -554,6 +554,8 @@ export default function FitaTaekwondoApp() {
   const [newsLocation, setNewsLocation] = useState('');
   const [newsContent, setNewsContent] = useState('');
   const [newsImage, setNewsImage] = useState('');
+  const [newsImageFile, setNewsImageFile] = useState<File | null>(null);
+  const [newsPublishing, setNewsPublishing] = useState(false);
   const [newsIsPinned, setNewsIsPinned] = useState(false);
 
   const [docTitle, setDocTitle] = useState('');
@@ -892,14 +894,28 @@ export default function FitaTaekwondoApp() {
   };
 
   useEffect(() => {
-    if (!notificationsOpen || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!canReadNotifications || !noticeStorageKey || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
     let active = true;
     void navigator.serviceWorker.getRegistration('/')
-      .then(registration => registration?.pushManager.getSubscription())
-      .then(subscription => { if (active) setDevicePushEnabled(Boolean(subscription)); })
+      .then(async registration => {
+        const subscription = await registration?.pushManager.getSubscription();
+        if (!active) return;
+        setDevicePushEnabled(Boolean(subscription));
+        if (!subscription) return;
+        const migrationKey = noticeStorageKey + '_push_payload_v1';
+        try { if (localStorage.getItem(migrationKey) === subscription.endpoint) return; } catch {}
+        const response = await fetch('/api/news-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(subscription.toJSON()),
+        });
+        if (response.ok && active) {
+          try { localStorage.setItem(migrationKey, subscription.endpoint); } catch {}
+        }
+      })
       .catch(() => {});
     return () => { active = false; };
-  }, [notificationsOpen]);
+  }, [canReadNotifications, noticeStorageKey, notificationsOpen]);
 
   const toggleDevicePush = async () => {
     if (pushBusy) return;
@@ -936,7 +952,7 @@ export default function FitaTaekwondoApp() {
       const result = await fetch('/api/news-push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint: subscription.endpoint }),
+        body: JSON.stringify(subscription.toJSON()),
       });
       if (!result.ok) {
         const failure = await result.json().catch(() => null);
@@ -1092,9 +1108,31 @@ export default function FitaTaekwondoApp() {
     }
   };
 
-  const handleSaveNews = (e: React.FormEvent) => {
+  const handleSaveNews = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newsTitle.trim() || !newsContent.trim()) return;
+    if (!isAccountAdmin || !adminMode || newsPublishing || !newsTitle.trim() || !newsContent.trim()) return;
+
+    let image = newsImage.trim();
+    if (newsImageFile) {
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(newsImageFile.type) || newsImageFile.size > 4 * 1024 * 1024) {
+        showToast('Scegli un’immagine JPG, PNG, WebP o GIF fino a 4 MB.');
+        return;
+      }
+      setNewsPublishing(true);
+      try {
+        const data = new FormData();
+        data.append('file', newsImageFile);
+        const response = await fetch('/api/articles/media', { method: 'POST', body: data });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || typeof result?.url !== 'string') throw new Error(result?.error || 'Impossibile caricare l’immagine.');
+        image = result.url;
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Impossibile caricare l’immagine.');
+        return;
+      } finally {
+        setNewsPublishing(false);
+      }
+    }
     const newItem = {
       id: 'news-' + Date.now(),
       title: newsTitle,
@@ -1103,12 +1141,12 @@ export default function FitaTaekwondoApp() {
       date: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }),
       location: newsLocation || 'Nazionale',
       content: newsContent,
-      image: newsImage || null,
+      image: image || null,
       isPinned: newsIsPinned
     };
-    setNewsList([newItem, ...newsList]);
+    setNewsList(previous => [newItem, ...previous]);
     setIsNewsModalOpen(false);
-    setNewsTitle(''); setNewsContent(''); setNewsLocation(''); setNewsImage(''); setNewsIsPinned(false);
+    setNewsTitle(''); setNewsContent(''); setNewsLocation(''); setNewsImage(''); setNewsImageFile(null); setNewsIsPinned(false);
     showToast('Notizia pubblicata!');
   };
 
@@ -2935,7 +2973,7 @@ export default function FitaTaekwondoApp() {
             <div className="w-full max-w-md bg-white rounded-xl border border-slate-200 p-5 shadow-2xl space-y-4 text-xs max-h-[85vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-sm font-bold text-[#0B1B3D]">Pubblica Nuova Notizia</h3>
-                <button onClick={() => setIsNewsModalOpen(false)} className="text-slate-400"><X className="w-5 h-5" /></button>
+                <button type="button" aria-label="Chiudi" disabled={newsPublishing} onClick={() => setIsNewsModalOpen(false)} className="text-slate-400 disabled:opacity-50"><X className="w-5 h-5" /></button>
               </div>
 
               <form onSubmit={handleSaveNews} className="space-y-3">
@@ -2970,10 +3008,33 @@ export default function FitaTaekwondoApp() {
                   <textarea ref={newsContentInputRef} required rows={4} placeholder="Inserisci il testo completo..." value={newsContent} onChange={(e) => setNewsContent(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
                 </div>
 
-                <div>
-                  <label className="block text-slate-600 font-bold mb-1">URL Immagine (Opzionale)</label>
-                  <input type="text" placeholder="https://..." value={newsImage} onChange={(e) => setNewsImage(e.target.value)} className="w-full bg-slate-50 border p-2 rounded text-slate-800" />
-                </div>
+                <fieldset disabled={newsPublishing} className="min-w-0 space-y-2">
+                  <legend className="mb-1 font-bold text-slate-600">Immagine <span className="font-normal">(facoltativa)</span></legend>
+                  <label htmlFor="news-image-file" className="block text-slate-700">Carica dal dispositivo</label>
+                  <input id="news-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = '';
+                    if (!file) return;
+                    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size > 4 * 1024 * 1024) {
+                      showToast('Scegli un’immagine JPG, PNG, WebP o GIF fino a 4 MB.');
+                      return;
+                    }
+                    setNewsImageFile(file);
+                    setNewsImage('');
+                  }} className="w-full min-w-0 rounded border border-slate-300 bg-slate-50 p-2 text-slate-800" />
+                  <p className="text-xs text-slate-500">JPG, PNG, WebP o GIF, massimo 4 MB.</p>
+                  {newsImageFile && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="break-all text-slate-700">{newsImageFile.name}</span>
+                      <button type="button" onClick={() => setNewsImageFile(null)} className="font-semibold text-red-700 underline">Rimuovi file</button>
+                    </div>
+                  )}
+                  <label htmlFor="news-image-url" className="block text-slate-700">Oppure incolla un URL</label>
+                  <input id="news-image-url" type="url" placeholder="https://..." value={newsImage} onChange={event => {
+                    setNewsImage(event.target.value);
+                    if (event.target.value) setNewsImageFile(null);
+                  }} className="w-full rounded border bg-slate-50 p-2 text-slate-800" />
+                </fieldset>
 
                 <div className="pt-1">
                   <label onClick={() => setNewsIsPinned(!newsIsPinned)} className="flex items-center gap-2 cursor-pointer font-bold text-amber-800 bg-amber-50 p-2 rounded border border-amber-200 select-none">
@@ -2985,7 +3046,7 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 <div className="flex justify-end pt-3 border-t">
-                  <button type="submit" className="px-4 py-2 rounded bg-[#0B1B3D] text-white font-bold">Pubblica</button>
+                  <button type="submit" disabled={newsPublishing} className="rounded bg-[#0B1B3D] px-4 py-2 font-bold text-white disabled:opacity-50">{newsPublishing ? 'Caricamento immagine…' : 'Pubblica'}</button>
                 </div>
               </form>
             </div>

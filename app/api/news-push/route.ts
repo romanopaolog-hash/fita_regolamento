@@ -1,6 +1,6 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from '../../../lib/account-approval';
-import { pushKeys, registerPushDevice, validPushEndpoint } from '../../../lib/news-push';
+import { parsePushSubscriptionKeys, pushKeys, registerPushDevice, validPushEndpoint } from '../../../lib/news-push';
 
 const headers = { 'Cache-Control': 'no-store' };
 
@@ -31,9 +31,12 @@ export async function POST(request: Request) {
     if (!user) return Response.json({ error: 'Accedi con un account approvato per attivare le notifiche.' }, { status: 403, headers });
     const body = await request.text();
     if (body.length > 3000) return Response.json({ error: 'Richiesta troppo grande.' }, { status: 413, headers });
-    const endpoint = validPushEndpoint(JSON.parse(body)?.endpoint);
+    const subscription = JSON.parse(body);
+    const endpoint = validPushEndpoint(subscription?.endpoint);
+    const keys = parsePushSubscriptionKeys(subscription?.keys);
     if (!endpoint) return Response.json({ error: 'Il servizio push di questo browser non è supportato.' }, { status: 400, headers });
-    await registerPushDevice(user.id, endpoint);
+    if (!keys) return Response.json({ error: 'Chiavi del dispositivo non valide.' }, { status: 400, headers });
+    await registerPushDevice(user.id, endpoint, keys);
     return Response.json({ ok: true }, { headers });
   } catch {
     return Response.json({ error: 'Impossibile attivare le notifiche push.' }, { status: 503, headers });

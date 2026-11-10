@@ -145,9 +145,10 @@ export async function PUT(request: Request) {
         },
       );
       const previousIds = new Set(current.news?.map(item => item.id));
-      if (payload.news.some(item => !previousIds.has(item.id) && typeof item.publishedAt === 'string')) {
+      const newItems = payload.news.filter(item => !previousIds.has(item.id) && typeof item.publishedAt === 'string');
+      if (newItems.length) {
         after(async () => {
-          try { await sendNewsPush(); }
+          try { await Promise.all(newItems.map(item => sendNewsPush(item))); }
           catch { console.warn('[news-push] Dispatch failed'); }
         });
       }

@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
+import { createCipheriv, createECDH, createHash, createPrivateKey, generateKeyPairSync, hkdfSync, randomBytes, sign } from 'node:crypto';
 import { del, get, list, put } from '@vercel/blob';
 import { clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from './account-approval';
@@ -6,7 +6,47 @@ import { isAccountApproved } from './account-approval';
 const keyPath = 'fita-regolamento/push/vapid.json';
 const devicePrefix = 'fita-regolamento/push/devices/';
 type Keys = { publicKey: string; privateKey: string };
-type Device = { userId: string; endpoint: string };
+type SubscriptionKeys = { p256dh: string; auth: string };
+type Device = { userId: string; endpoint: string; subscriptionKeys?: SubscriptionKeys };
+type NewsNotice = { id: string; category: string; title: string };
+
+export function parsePushSubscriptionKeys(value: unknown): SubscriptionKeys | null {
+  if (!value || typeof value !== 'object') return null;
+  const { p256dh, auth } = value as Partial<SubscriptionKeys>;
+  if (typeof p256dh !== 'string' || !/^[A-Za-z0-9_-]{87}$/.test(p256dh) ||
+      typeof auth !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(auth)) return null;
+  const point = Buffer.from(p256dh, 'base64url');
+  if (point.length !== 65 || point[0] !== 4 || Buffer.from(auth, 'base64url').length !== 16) return null;
+  try {
+    const ecdh = createECDH('prime256v1');
+    ecdh.generateKeys();
+    ecdh.computeSecret(point);
+    return { p256dh, auth };
+  } catch {
+    return null;
+  }
+}
+
+// RFC 8291 and RFC 8188, one final aes128gcm record.
+function encryptNotice(payload: Buffer, keys: SubscriptionKeys) {
+  const recipient = Buffer.from(keys.p256dh, 'base64url');
+  const secret = Buffer.from(keys.auth, 'base64url');
+  const ecdh = createECDH('prime256v1');
+  const sender = ecdh.generateKeys();
+  const shared = ecdh.computeSecret(recipient);
+  const salt = randomBytes(16);
+  const info = Buffer.concat([Buffer.from('WebPush: info\0'), recipient, sender]);
+  const ikm = Buffer.from(hkdfSync('sha256', shared, secret, info, 32));
+  const key = Buffer.from(hkdfSync('sha256', ikm, salt, 'Content-Encoding: aes128gcm\0', 16));
+  const nonce = Buffer.from(hkdfSync('sha256', ikm, salt, 'Content-Encoding: nonce\0', 12));
+  const header = Buffer.alloc(21);
+  salt.copy(header);
+  header.writeUInt32BE(4096, 16);
+  header[20] = sender.length;
+  const cipher = createCipheriv('aes-128-gcm', key, nonce);
+  const ciphertext = Buffer.concat([cipher.update(payload), cipher.update(Buffer.from([2])), cipher.final()]);
+  return new Uint8Array(Buffer.concat([header, sender, ciphertext, cipher.getAuthTag()]));
+}
 
 async function readJson<T>(path: string): Promise<T | null> {
   const blob = await get(path, { access: 'private', useCache: false });
@@ -49,14 +89,18 @@ export function validPushEndpoint(value: unknown) {
   return null;
 }
 
-export async function registerPushDevice(userId: string, endpoint: URL) {
+export async function registerPushDevice(userId: string, endpoint: URL, subscriptionKeys: SubscriptionKeys) {
   const path = devicePrefix + createHash('sha256').update(endpoint.href).digest('hex') + '.json';
-  await put(path, JSON.stringify({ userId, endpoint: endpoint.href }), {
+  await put(path, JSON.stringify({ userId, endpoint: endpoint.href, subscriptionKeys }), {
     access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json',
   });
 }
 
-export async function sendNewsPush() {
+export async function sendNewsPush(notice: NewsNotice) {
+  const payload = Buffer.from(JSON.stringify({
+    id: notice.id.slice(0, 120), category: notice.category.slice(0, 60), title: notice.title.slice(0, 250),
+  }));
+  const topic = createHash('sha256').update(notice.id).digest('base64url').slice(0, 32);
   const keys = await pushKeys();
   if (!keys) return;
   const privateKey = createPrivateKey(keys.privateKey);
@@ -84,9 +128,14 @@ export async function sendNewsPush() {
           sub: 'https://fita-regolamento.vercel.app',
         });
         const signature = sign('sha256', Buffer.from(jwt), { key: privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64url');
+        const body = device.subscriptionKeys ? encryptNotice(payload, device.subscriptionKeys) : undefined;
         const response = await fetch(endpoint, {
           method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000),
-          headers: { TTL: '86400', Topic: 'fita-news', Authorization: 'vapid t=' + jwt + '.' + signature + ', k=' + keys.publicKey },
+          body,
+          headers: {
+            TTL: '86400', Topic: topic, Authorization: 'vapid t=' + jwt + '.' + signature + ', k=' + keys.publicKey,
+            ...(body ? { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream' } : {}),
+          },
         });
         if (response.status === 404 || response.status === 410) {
           // Keep the record if it was replaced since we read it.
