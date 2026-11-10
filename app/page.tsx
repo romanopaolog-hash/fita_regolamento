@@ -1918,15 +1918,7 @@ export default function FitaTaekwondoApp() {
                   )}
                 </div>
 
-                {isCurrentSectionUnavailable ? (
-                <div role="status" className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-10 text-center shadow-sm">
-                  <EyeOff className="mb-3 h-7 w-7 text-slate-400" aria-hidden="true" />
-                  <h3 className="text-base font-bold text-[#0B1B3D]">Sezione temporaneamente non disponibile</h3>
-                  <p className="mt-1 max-w-md text-sm text-slate-500">I contenuti di “{currentSection.title}” sono temporaneamente nascosti. Riprova più tardi.</p>
-                </div>
-              ) : (
-                <>
-              <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 w-full sm:w-auto">
+                <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 w-full sm:w-auto">
                   <button
                     onClick={() => setActiveTabMode('rules')}
                     className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
@@ -1956,6 +1948,14 @@ export default function FitaTaekwondoApp() {
                 </div>
               </div>
 
+              {isCurrentSectionUnavailable ? (
+                <div role="status" className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-10 text-center shadow-sm">
+                  <EyeOff className="mb-3 h-7 w-7 text-slate-400" aria-hidden="true" />
+                  <h3 className="text-base font-bold text-[#0B1B3D]">Sezione temporaneamente non disponibile</h3>
+                  <p className="mt-1 max-w-md text-sm text-slate-500">I contenuti di “{currentSection.title}” sono temporaneamente nascosti. Riprova più tardi.</p>
+                </div>
+              ) : (
+                <>
               {activeTabMode === 'rules' && (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
