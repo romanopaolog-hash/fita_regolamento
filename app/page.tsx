@@ -486,6 +486,9 @@ export default function FitaTaekwondoApp() {
   const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({});
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationSeenAt, setNotificationSeenAt] = useState(0);
+  const [dismissedNoticeIds, setDismissedNoticeIds] = useState<string[]>([]);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushStatus, setPushStatus] = useState('');
   const [notificationItems, setNotificationItems] = useState<PortalNotice[]>([]);
   const [notificationPreferenceBusy, setNotificationPreferenceBusy] = useState(false);
 
@@ -819,7 +822,11 @@ export default function FitaTaekwondoApp() {
   useEffect(() => {
     setNotificationSeenAt(0);
     setNotificationItems([]);
+    setDismissedNoticeIds([]);
+    setPushStatus('');
     try {
+      const dismissed: unknown = JSON.parse(localStorage.getItem(noticeStorageKey + '_dismissed') || '[]');
+      if (Array.isArray(dismissed)) setDismissedNoticeIds(dismissed.filter(id => typeof id === 'string'));
       if (noticeStorageKey) setNotificationSeenAt(Number(localStorage.getItem(noticeStorageKey)) || 0);
     } catch {}
   }, [noticeStorageKey]);
@@ -866,8 +873,55 @@ export default function FitaTaekwondoApp() {
     };
   }, [noticeStorageKey, canReadNotifications, newsNotificationsEnabled, notificationsOpen]);
 
-  const visibleNotices = notificationItems.filter(item => item.kind !== 'News' || newsNotificationsEnabled);
+  const visibleNotices = notificationItems.filter(item => !dismissedNoticeIds.includes(item.id) && (item.kind !== 'News' || newsNotificationsEnabled));
   const unreadNotices = visibleNotices.filter(item => item.at > notificationSeenAt).length;
+
+  const dismissNotices = (ids: string[]) => {
+    const next = [...new Set([...dismissedNoticeIds, ...ids])].slice(-500);
+    setDismissedNoticeIds(next);
+    try { localStorage.setItem(noticeStorageKey + '_dismissed', JSON.stringify(next)); } catch {}
+  };
+
+  const enableDevicePush = async () => {
+    if (pushBusy) return;
+    if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window)) {
+      setPushStatus('Se usi iPhone o iPad, aggiungi il sito alla schermata Home e aprilo dall’icona. Sugli altri dispositivi usa un browser con supporto Web Push.');
+      return;
+    }
+    setPushBusy(true);
+    setPushStatus('');
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setPushStatus('Consenti le notifiche nelle impostazioni del browser per attivarle.');
+        return;
+      }
+      const keyResponse = await fetch('/api/news-push', { cache: 'no-store' });
+      const keyData = await keyResponse.json();
+      if (!keyResponse.ok || typeof keyData.publicKey !== 'string') throw new Error(keyData.error || 'Chiave push non disponibile.');
+      await navigator.serviceWorker.register('/news-push-sw.js');
+      const registration = await navigator.serviceWorker.ready;
+      const base64 = keyData.publicKey.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+      const applicationServerKey = Uint8Array.from(atob(padded), character => character.charCodeAt(0));
+      const subscription = await registration.pushManager.getSubscription()
+        ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+      const result = await fetch('/api/news-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: subscription.endpoint }),
+      });
+      if (!result.ok) {
+        const failure = await result.json().catch(() => null);
+        throw new Error(failure?.error || 'Registrazione del dispositivo non riuscita.');
+      }
+      setPushStatus('Notifiche di sistema attive su questo dispositivo.');
+    } catch (error) {
+      setPushStatus(error instanceof Error ? error.message : 'Impossibile attivare le notifiche su questo dispositivo.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const markNoticesRead = () => {
     const latest = Math.max(notificationSeenAt, ...visibleNotices.map(item => item.at));
@@ -1814,11 +1868,25 @@ export default function FitaTaekwondoApp() {
                     <label className="my-2 flex items-center gap-2 rounded-lg bg-slate-100 p-2 text-sm">
                       <input type="checkbox" checked={newsNotificationsEnabled} disabled={notificationPreferenceBusy} onChange={event => void updateNewsNotifications(event.currentTarget.checked)} /> Ricevi notifiche per le news
                     </label>
-                    {unreadNotices > 0 && <button type="button" onClick={markNoticesRead} className="py-2 text-sm font-semibold text-blue-800">Segna tutte come lette</button>}
+                    {newsNotificationsEnabled && (
+                      <button type="button" disabled={pushBusy || notificationPreferenceBusy} onClick={() => void enableDevicePush()} className="mb-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 disabled:opacity-50">
+                        {pushBusy ? 'Attivazione…' : 'Attiva notifiche su questo dispositivo'}
+                      </button>
+                    )}
+                    {pushStatus && <p role="status" className="my-2 text-xs text-slate-700">{pushStatus}</p>}
+                    {visibleNotices.length > 0 && (
+                      <div className="flex flex-wrap gap-x-3">
+                        {unreadNotices > 0 && <button type="button" onClick={markNoticesRead} className="py-2 text-xs font-semibold text-blue-800">Segna tutte come lette</button>}
+                        <button type="button" onClick={() => dismissNotices(visibleNotices.map(item => item.id))} className="py-2 text-xs font-semibold text-slate-700">Svuota elenco</button>
+                      </div>
+                    )}
                     {visibleNotices.length ? <ul className="divide-y divide-slate-200">
-                      {visibleNotices.map(item => <li key={item.id} className="break-words py-2 text-sm">
-                        <p className="text-xs text-slate-600">{item.kind} · {new Date(item.at).toLocaleDateString('it-IT')}</p>
-                        <p className={item.at > notificationSeenAt ? 'font-bold text-[#0B1B3D]' : 'text-slate-700'}>{item.title}</p>
+                      {visibleNotices.map(item => <li key={item.id} className="flex items-start justify-between gap-2 break-words py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-600">{item.kind} · {new Date(item.at).toLocaleDateString('it-IT')}</p>
+                          <p className={item.at > notificationSeenAt ? 'font-bold text-[#0B1B3D]' : 'text-slate-700'}>{item.title}</p>
+                        </div>
+                        <button type="button" onClick={() => dismissNotices([item.id])} aria-label={`Rimuovi notifica: ${item.title}`} className="shrink-0 rounded p-2 text-slate-600 hover:bg-slate-100"><X className="h-4 w-4" aria-hidden="true" /></button>
                       </li>)}
                     </ul> : <p className="py-3 text-sm text-slate-600">Non ci sono notifiche.</p>}
                   </section>

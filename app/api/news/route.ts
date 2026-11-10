@@ -1,6 +1,11 @@
+import { after } from 'next/server';
+import { sendNewsPush } from '../../../lib/news-push';
+
 import { BlobPreconditionFailedError, get, head, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from '../../../lib/account-approval';
+
+export const maxDuration = 60;
 
 const NEWS_PATH = 'fita-regolamento/news.json';
 const MAX_BODY_SIZE = 1_000_000;
@@ -14,6 +19,7 @@ type NewsItem = {
   content: string;
   image: string | null;
   isPinned: boolean;
+  publishedAt?: string;
 };
 
 async function readNews() {
@@ -138,6 +144,13 @@ export async function PUT(request: Request) {
           ...(metadata?.etag ? { ifMatch: metadata.etag } : {}),
         },
       );
+      const previousIds = new Set(current.news?.map(item => item.id));
+      if (payload.news.some(item => !previousIds.has(item.id) && typeof item.publishedAt === 'string')) {
+        after(async () => {
+          try { await sendNewsPush(); }
+          catch { console.warn('[news-push] Dispatch failed'); }
+        });
+      }
       return Response.json({ etag: saved.etag }, { headers: noStoreHeaders() });
     } catch (error) {
       if (error instanceof BlobPreconditionFailedError) {
