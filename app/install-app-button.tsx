@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, X } from 'lucide-react';
+import { Bell, X } from 'lucide-react';
 
 type InstallPrompt = Event & {
   prompt: () => Promise<unknown>;
@@ -66,7 +66,7 @@ export default function InstallAppButton() {
   return (
     <>
       <button type="button" onClick={() => void install()} aria-label="Installa l’app" title="Installa l’app" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-800 transition-colors hover:bg-blue-100 hover:text-[#0B1B3D] focus-visible:outline-2 focus-visible:outline-blue-600">
-        <Download className="h-4 w-4" aria-hidden="true" />
+        <Bell className="h-4 w-4" aria-hidden="true" />
       </button>
       {showHelp && createPortal(
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">
