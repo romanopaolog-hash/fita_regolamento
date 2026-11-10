@@ -2,6 +2,15 @@ import { BlobPreconditionFailedError, get, head, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from '../../../lib/account-approval';
 
+import { isDemoArticle } from '../../../lib/demo-articles';
+
+function removeDemoArticles(sections: ArticleSection[]) {
+  return sections.map(section => ({
+    ...section,
+    subsections: section.subsections.filter(article => !isDemoArticle(article.id)),
+  }));
+}
+
 const ARTICLES_PATH = 'fita-regolamento/articles.json';
 const MAX_BODY_SIZE = 2_000_000;
 
@@ -62,7 +71,7 @@ export async function GET() {
     const { sections, etag } = await readArticles();
     const visibleSections = isAdmin || !sections
       ? sections
-      : sections.map(section => {
+      : removeDemoArticles(sections).map(section => {
         if (section.hidden === true) {
           const { id, title, shortTitle, subtitle, code } = section;
           return { id, title, shortTitle, subtitle, code, hidden: true, subsections: [], documents: [], showcaseVideos: [] };
@@ -138,7 +147,7 @@ export async function PUT(request: Request) {
     try {
       const saved = await put(
         ARTICLES_PATH,
-        JSON.stringify({ sections: payload.sections, updatedAt: new Date().toISOString() }),
+        JSON.stringify({ sections: removeDemoArticles(payload.sections), updatedAt: new Date().toISOString() }),
         {
           access: 'private',
           allowOverwrite: true,

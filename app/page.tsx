@@ -45,6 +45,8 @@ import {
 import { RegistrationForm, authAppearance } from './registration-form';
 import { formatPersonName } from '../lib/format-person-name';
 
+import { isDemoArticle } from '../lib/demo-articles';
+
 type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
 
 type AdminApprovalRequest = {
@@ -105,9 +107,10 @@ function parseBulkArticles(source: string) {
 
 const DEMO_DOCUMENT_IDS = new Set(['doc-k1', 'doc-k2', 'doc-vr1', 'doc-p1', 'doc-f1']);
 
-function removeDemoDocuments(sections: any[]) {
+function removeDemoContent(sections: any[]) {
   return sections.map(section => ({
     ...section,
+    subsections: (section.subsections || []).filter((article: { id: string }) => !isDemoArticle(article.id)),
     documents: (section.documents || []).filter((document: any) => !DEMO_DOCUMENT_IDS.has(document.id))
   }));
 }
@@ -317,35 +320,23 @@ function reconcileNewsLists(cloudNews: any[], deviceNews: any[], lastSyncedNews:
 }
 
 // --- DATI DI DEFAULT ---
-const DEFAULT_SECTIONS = [
+const DEFAULT_SECTIONS: Array<{
+  id: string;
+  title: string;
+  shortTitle: string;
+  subtitle: string;
+  code: string;
+  subsections: Array<{ id: string; title: string; content: string; tags: string[]; media: Array<{ type: string; url: string; caption: string }> }>;
+  documents: Array<{ id: string; title: string; format: string; size: string; date: string; description: string; url: string }>;
+}> = [
   {
     id: 'kyorugi',
     title: 'Combattimento',
     shortTitle: 'Kyorugi',
     subtitle: 'Kyorugi (World Taekwondo / FITA)',
     code: 'KY-2026',
-    subsections: [
-      {
-        id: 'k1',
-        title: 'Punteggi e Aree Bersaglio (PSS)',
-        content: `I punti vengono validati dal sistema elettronico PSS (Protector & Scoring System) o dai giudici d'angolo quando una tecnica consentita viene eseguita con impatto efficace.\n\n• 1 Punto: Pugno valido sul corpetto protettivo.\n• 2 Punti: Calcio valido sul corpetto.\n• 3 Punti: Calcio alla testa o pugno/calcio con conteggio di protezione (RSC).\n• 4 Punti: Calcio in rotazione (spin) al corpetto.\n• 5 Punti: Calcio in rotazione (spin) alla testa.`,
-        tags: ['Punteggi', 'Corpetto', 'Testa', 'PSS'],
-        media: [
-          { type: 'image', url: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?auto=format&fit=crop&q=80&w=800', caption: 'Area di gara ottagonale e sistema PSS approvato FITA' }
-        ]
-      },
-      {
-        id: 'k2',
-        title: 'Falli e Penalità (Gam-jeom)',
-        content: `L'arbitro centrale assegna un "Gam-jeom" (1 punto all'avversario) per le seguenti infrazioni:\n\n1. Uscita dalla linea di delimitazione del campo di gara con entrambi i piedi.\n2. Caduta intenzionale o per evitare un attacco.\n3. Evitare il combattimento o indietreggiare passivamente.\n4. Trattenere, spingere o afferrare la gamba o il corpo dell'avversario.\n5. Colpire sotto la cintola o a terra.`,
-        tags: ['Gam-jeom', 'Penalità', 'Arbitraggio'],
-        media: []
-      }
-    ],
-    documents: [
-      { id: 'doc-k1', title: 'Guida Ufficiale Arbitraggio Kyorugi 2026.pdf', format: 'PDF', size: '2.4 MB', date: '10/01/2026', description: 'Manuale illustrato completo per arbitri di combattimento.', url: '#' },
-      { id: 'doc-k2', title: 'Slide_Corso_Aggiornamento_FITA_Combattimento.pptx', format: 'PPTX', size: '14.2 MB', date: '05/02/2026', description: 'Presentazione PowerPoint utilizzata durante il raduno arbitrale.', url: '#' }
-    ]
+    subsections: [],
+    documents: []
   },
   {
     id: 'video-replay',
@@ -353,20 +344,8 @@ const DEFAULT_SECTIONS = [
     shortTitle: 'VR',
     subtitle: 'Protocollo Ufficiale di Revisione Video',
     code: 'VR-2026',
-    subsections: [
-      {
-        id: 'vr1',
-        title: 'Procedura di Richiesta e Cartellino Coach',
-        content: `Ogni coach riceve 1 quota (cartellino VR) all'inizio dell'incontro.\n\n- Se il ricorso viene ACCOLTO dalla giuria di revisione, la quota viene restituita.\n- Se il ricorso viene RESPINTO, la quota viene persa per la durata dell'incontro.\n- La richiesta deve essere effettuata entro 5 secondi dalla conclusione dell'azione.`,
-        tags: ['VR', 'Cartellino', 'Tempistiche'],
-        media: [
-          { type: 'video', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', caption: 'Esempio di richiesta VR per assegnazione punti alla testa' }
-        ]
-      }
-    ],
-    documents: [
-      { id: 'doc-vr1', title: 'Modulo_Richiesta_VR_Coach_FITA.pdf', format: 'PDF', size: '520 KB', date: '12/01/2026', description: 'Modulo per la registrazione delle richieste VR al tavolo di giuria.', url: '#' }
-    ]
+    subsections: [],
+    documents: []
   },
   {
     id: 'poomsae',
@@ -374,18 +353,8 @@ const DEFAULT_SECTIONS = [
     shortTitle: 'Poomsae',
     subtitle: 'Poomsae Ufficiali & Riconosciute',
     code: 'PO-2026',
-    subsections: [
-      {
-        id: 'p1',
-        title: 'Criteri di Valutazione (4.0 / 6.0)',
-        content: `Il punteggio complessivo per l'esecuzione di una Forma è di 10.0 Punti:\n\n• Precisione (4.0 Punti): Correttezza delle posizioni (Sogi), parate (Makgi) e attacchi (Jirugi/Chagi).\n• Presentazione (6.0 Punti): Forza, velocità, equilibrio, controllo della respirazione ed espressività (Kihap).`,
-        tags: ['Precisione', 'Presentazione', 'Valutazione'],
-        media: []
-      }
-    ],
-    documents: [
-      { id: 'doc-p1', title: 'Scheda_Valutazione_Giudici_Poomsae.pdf', format: 'PDF', size: '890 KB', date: '18/01/2026', description: 'Griglia cartacea per il calcolo delle detrazioni Precisione/Presentazione.', url: '#' }
-    ]
+    subsections: [],
+    documents: []
   },
   {
     id: 'freestyle',
@@ -393,18 +362,8 @@ const DEFAULT_SECTIONS = [
     shortTitle: 'Freestyle',
     subtitle: 'Poomsae Freestyle e Acrobatica',
     code: 'FR-2026',
-    subsections: [
-      {
-        id: 'f1',
-        title: 'Elementi Obbligatori e Coreografia',
-        content: `Il Poomsae Freestyle integra tecniche tradizionali di Taekwondo con elementi acrobatici su base musicale. Deve contenere salti acrobatici, calci multipli in volo e combinazioni in coordinazione col ritmo.`,
-        tags: ['Musica', 'Acrobazie', 'Salti'],
-        media: []
-      }
-    ],
-    documents: [
-      { id: 'doc-f1', title: 'Regolamento_Musicale_Freestyle.pdf', format: 'PDF', size: '1.5 MB', date: '04/02/2026', description: 'Specifiche sull invio dei brani musicali e tempi d esecuzione.', url: '#' }
-    ]
+    subsections: [],
+    documents: []
   }
 ];
 
@@ -609,7 +568,7 @@ export default function FitaTaekwondoApp() {
         if (Array.isArray(parsed)) deviceSections = parsed;
       } catch {}
     }
-    deviceSections = removeDemoDocuments(withLegacyArticleDates(deviceSections));
+    deviceSections = removeDemoContent(withLegacyArticleDates(deviceSections));
     setSections(deviceSections);
 
     // Remove the old per-device secret; admin access is checked by Clerk on the server.
@@ -664,7 +623,7 @@ export default function FitaTaekwondoApp() {
         articleSyncEtagRef.current = result.etag ?? null;
         const rawCloudSections = Array.isArray(result.sections) ? result.sections : null;
         lastSyncedSectionsRef.current = rawCloudSections ? JSON.stringify(rawCloudSections) : null;
-        const cloudSections = rawCloudSections ? removeDemoDocuments(withLegacyArticleDates(rawCloudSections)) : null;
+        const cloudSections = rawCloudSections ? removeDemoContent(withLegacyArticleDates(rawCloudSections)) : null;
 
         const resolvedSections = cloudSections
           ? (lastSyncedSnapshot
@@ -720,8 +679,8 @@ export default function FitaTaekwondoApp() {
             let priorSnapshot: any[] = [];
             if (savedSnapshot) { try { priorSnapshot = JSON.parse(savedSnapshot); } catch {} }
             setSections(priorSnapshot.length
-              ? reconcileArticleSections(removeDemoDocuments(latest.sections), sections, priorSnapshot)
-              : mergeArticleSections(removeDemoDocuments(latest.sections), sections));
+              ? reconcileArticleSections(removeDemoContent(latest.sections), sections, priorSnapshot)
+              : mergeArticleSections(removeDemoContent(latest.sections), sections));
           }
           showToast('Ho unito gli aggiornamenti recenti. Attendi un istante per completare la sincronizzazione.');
           return;
@@ -737,7 +696,6 @@ export default function FitaTaekwondoApp() {
         lastSyncedSectionsRef.current = serializedSections;
         localStorage.setItem('tkd_articles_synced_v1', 'true');
         localStorage.setItem('tkd_articles_last_synced_v1', serializedSections);
-        showToast('Articoli salvati nell’archivio condiviso.');
       } catch (error) {
         showToast(error instanceof Error ? error.message : 'Sincronizzazione non riuscita. Riprova; se continua, aggiorna la pagina.');
       }
@@ -844,7 +802,10 @@ export default function FitaTaekwondoApp() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const newsNotificationsEnabled = clerkUser?.unsafeMetadata.newsNotifications === true;
+  const [newsPreference, setNewsPreference] = useState<{ userId: string; enabled: boolean } | null>(null);
+  const newsNotificationsEnabled = newsPreference && newsPreference.userId === clerkUser?.id
+    ? newsPreference.enabled
+    : clerkUser?.unsafeMetadata.newsNotifications === true;
   const canReadNotifications = Boolean(clerkUser && getAccountApprovalStatus(clerkUser) === 'approved');
   const noticeStorageKey = clerkUser ? `tkd_notice_seen_${clerkUser.id}` : '';
 
@@ -907,12 +868,15 @@ export default function FitaTaekwondoApp() {
     try { localStorage.setItem(noticeStorageKey, String(latest)); } catch {}
   };
 
-  const toggleNewsNotifications = async () => {
+  const updateNewsNotifications = async (enabled: boolean) => {
     if (!clerkUser || notificationPreferenceBusy) return;
+    const previous = newsPreference;
+    setNewsPreference({ userId: clerkUser.id, enabled });
     setNotificationPreferenceBusy(true);
     try {
-      await clerkUser.update({ unsafeMetadata: { ...clerkUser.unsafeMetadata, newsNotifications: !newsNotificationsEnabled } });
+      await clerkUser.update({ unsafeMetadata: { ...clerkUser.unsafeMetadata, newsNotifications: enabled } });
     } catch {
+      setNewsPreference(previous);
       showToast('Impossibile salvare la preferenza delle notifiche.');
     } finally {
       setNotificationPreferenceBusy(false);
@@ -1839,7 +1803,7 @@ export default function FitaTaekwondoApp() {
                       <button type="button" onClick={() => setNotificationsOpen(false)} aria-label="Chiudi notifiche" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button>
                     </div>
                     <label className="my-2 flex items-center gap-2 rounded-lg bg-slate-100 p-2 text-sm">
-                      <input type="checkbox" checked={newsNotificationsEnabled} disabled={notificationPreferenceBusy} onChange={() => void toggleNewsNotifications()} /> Ricevi notifiche per le news
+                      <input type="checkbox" checked={newsNotificationsEnabled} disabled={notificationPreferenceBusy} onChange={event => void updateNewsNotifications(event.currentTarget.checked)} /> Ricevi notifiche per le news
                     </label>
                     {unreadNotices > 0 && <button type="button" onClick={markNoticesRead} className="py-2 text-sm font-semibold text-blue-800">Segna tutte come lette</button>}
                     {visibleNotices.length ? <ul className="divide-y divide-slate-200">
@@ -2082,8 +2046,8 @@ export default function FitaTaekwondoApp() {
                 <>
               {activeTabMode === 'rules' && (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                    <button type="button" onClick={() => setMobileFiltersOpen(true)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 md:hidden">Filtri{showOnlyFavorites ? ' · Preferiti' : ''}</button>
+                  <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:flex-row md:flex-wrap md:items-center md:justify-between">
+                    <button type="button" onClick={() => setMobileFiltersOpen(true)} aria-expanded={mobileFiltersOpen} className="min-h-10 self-start rounded-lg border border-slate-300 bg-slate-50 px-4 text-sm font-bold text-slate-700 md:hidden">Filtri{showOnlyFavorites ? ' · Preferiti' : ''}</button>
                     {mobileFiltersOpen && <button type="button" aria-label="Chiudi filtri" onClick={() => setMobileFiltersOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" />}
                     <div className={mobileFiltersOpen ? 'fixed inset-x-0 bottom-0 z-50 flex max-h-[75dvh] flex-col gap-4 overflow-auto rounded-t-2xl bg-white px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl md:static md:flex-row md:flex-wrap md:items-center md:gap-2 md:overflow-visible md:rounded-none md:p-0 md:shadow-none' : 'hidden flex-wrap items-center gap-2 md:flex'}>
                       <div className="flex items-center justify-between md:hidden"><strong>Filtri e ordinamento</strong><button type="button" onClick={() => setMobileFiltersOpen(false)} className="min-h-11 rounded-lg px-3 font-semibold text-blue-800">Chiudi</button></div>
@@ -2103,11 +2067,10 @@ export default function FitaTaekwondoApp() {
                         </select>
                       </label>
                       <label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={prioritizeSuggested} onChange={e => setPrioritizeSuggested(e.target.checked)} className="accent-amber-600" /> Preferiti e suggeriti in cima</label>
-                      {isSelectingArticles && <span className="font-semibold text-[#0B1B3D]">{selectedArticleIds.length} selezionati</span>}
                     </div>
 
                     {user && user.role === 'admin' && adminMode && (
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="grid grid-cols-3 items-stretch gap-1.5 border-t border-slate-200 pt-2 md:flex md:flex-wrap md:items-center md:gap-2 md:border-t-0 md:pt-0">
                         <button
                           onClick={() => {
                             setEditingSubsection(null);
@@ -2116,7 +2079,7 @@ export default function FitaTaekwondoApp() {
                             setSelectedFileName(null);
                             setIsEditingModalOpen(true);
                           }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0B1B3D] text-white font-bold text-xs"
+                          className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-[#0B1B3D] px-2 text-center text-xs font-bold text-white md:min-h-0 md:px-3 md:py-1.5"
                         >
                           <Plus className="w-3.5 h-3.5" /> Articolo
                         </button>
@@ -2125,9 +2088,9 @@ export default function FitaTaekwondoApp() {
                             setBulkImportSectionId(currentSection.id);
                             setIsQuickImportModalOpen(true);
                           }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold text-xs hover:bg-emerald-800"
+                          className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-slate-300 px-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50 md:min-h-0 md:px-3 md:py-1.5"
                         >
-                          <Upload className="w-3.5 h-3.5" /> Importa più articoli
+                          <Upload className="w-3.5 h-3.5" /> Importa<span className="hidden md:inline"> più articoli</span>
                         </button>
                         <button
                           type="button"
@@ -2135,18 +2098,18 @@ export default function FitaTaekwondoApp() {
                             if (isSelectingArticles) setSelectedArticleIds([]);
                             setIsSelectingArticles(prev => !prev);
                           }}
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border font-bold text-xs ${isSelectingArticles ? 'border-slate-300 bg-slate-100 text-slate-700' : 'border-[#0B1B3D] text-[#0B1B3D] hover:bg-slate-50'}`}
+                          className={`inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border px-1 text-center text-xs font-bold md:min-h-0 md:px-3 md:py-1.5 ${isSelectingArticles ? 'border-slate-300 bg-slate-100 text-slate-700' : 'border-[#0B1B3D] text-[#0B1B3D] hover:bg-slate-50'}`}
                         >
                           {isSelectingArticles ? <X className="w-3.5 h-3.5" /> : <CheckSquare className="w-3.5 h-3.5" />}
-                          {isSelectingArticles ? 'Annulla selezione' : 'Seleziona'}
+                          {isSelectingArticles ? 'Annulla' : 'Seleziona'}
                         </button>
                         {isSelectingArticles && selectedArticleIds.length > 0 && (
                           <button
                             type="button"
                             onClick={handleDeleteSelectedArticles}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-700 text-white font-bold text-xs hover:bg-red-800"
+                            className="col-span-3 inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-red-700 px-3 text-xs font-bold text-white hover:bg-red-800 md:min-h-0 md:py-1.5"
                           >
-                            <Trash2 className="w-3.5 h-3.5" /> Elimina selezionati
+                            <Trash2 className="w-3.5 h-3.5" /> Elimina selezionati ({selectedArticleIds.length})
                           </button>
                         )}
                       </div>
@@ -2248,10 +2211,10 @@ export default function FitaTaekwondoApp() {
 
                           {isOpen && (
                             <div className="p-3 sm:p-5 bg-slate-50 border-t border-slate-100 text-slate-700">
-                              <div role="group" aria-label="Dimensione testo dell’articolo" className="mb-3 flex items-center justify-end gap-2">
-                                <button type="button" onClick={() => changeArticleTextSize(-2)} disabled={articleTextSize <= 14} aria-label="Riduci il testo" className="min-h-11 min-w-11 rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold disabled:opacity-40">A−</button>
-                                <span aria-live="polite" className="min-w-10 text-center text-xs tabular-nums text-slate-600">{articleTextSize} px</span>
-                                <button type="button" onClick={() => changeArticleTextSize(2)} disabled={articleTextSize >= 24} aria-label="Ingrandisci il testo" className="min-h-11 min-w-11 rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold disabled:opacity-40">A+</button>
+                              <div role="group" aria-label="Dimensione testo dell’articolo" className="mb-1 flex w-fit items-center divide-x divide-slate-200 rounded-md border border-slate-200 bg-white">
+                                <button type="button" onClick={() => changeArticleTextSize(-2)} disabled={articleTextSize <= 14} aria-label="Riduci il testo" className="h-8 min-w-9 px-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40">A−</button>
+                                <span aria-live="polite" className="px-1.5 text-center text-[11px] tabular-nums text-slate-600">{articleTextSize} px</span>
+                                <button type="button" onClick={() => changeArticleTextSize(2)} disabled={articleTextSize >= 24} aria-label="Ingrandisci il testo" className="h-8 min-w-9 px-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40">A+</button>
                               </div>
                               <div style={{ fontSize: articleTextSize }} className={`whitespace-pre-line [overflow-wrap:anywhere] leading-relaxed [&_p]:my-3 [&_h3]:text-[1.2em] [&_h4]:text-[1.1em] [&_h5]:text-[1em] ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
                                 {renderRichContent(sub.content, openLinkedArticle)}
