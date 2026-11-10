@@ -1,7 +1,7 @@
 self.addEventListener('push', event => {
   event.waitUntil(self.registration.showNotification('FITA Regolamento', {
     body: 'È stata pubblicata una nuova notizia. Tocca per aprire il portale.',
-    icon: '/app-icon/192?v=3',
+    icon: '/app-icon/192?v=4',
     tag: 'fita-news',
   }));
 });

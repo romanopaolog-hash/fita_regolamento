@@ -1,23 +1,15 @@
-import { createElement as h } from 'react';
+import { createElement } from 'react';
 import { ImageResponse } from 'next/og';
+
+// Original PNG supplied for the Home Screen icon.
+const originalIcon = 'data:image/png;base64,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';
 
 export async function GET(_request: Request, context: { params: Promise<{ size: string }> }) {
   const { size } = await context.params;
   if (!['180', '192', '512'].includes(size)) return new Response(null, { status: 404 });
   const width = Number(size);
-  const stripe = Math.max(2, Math.round(width * 0.08));
-
   return new ImageResponse(
-    h('div', { style: {
-      position: 'relative', display: 'flex', width, height: width,
-      alignItems: 'center', justifyContent: 'center', paddingBottom: stripe,
-      backgroundColor: '#0B1B3D', color: '#fff',
-    } },
-    h('div', { style: { fontSize: Math.round(width * 0.4), fontWeight: 900, lineHeight: 1 } }, 'FITA'),
-    h('div', { style: {
-      position: 'absolute', left: 0, right: 0, bottom: 0, height: stripe,
-      backgroundColor: '#A60F2D',
-    } })),
+    createElement('img', { src: originalIcon, width, height: width }),
     { width, height: width, headers: { 'Cache-Control': 'public, max-age=86400' } },
   );
 }
