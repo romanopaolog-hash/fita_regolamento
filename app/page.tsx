@@ -49,26 +49,8 @@ import { isDemoArticle } from '../lib/demo-articles';
 
 const MAX_ARTICLE_SUBTITLE_LENGTH = 100;
 
-function getArticleSubtitle(article: { title: string; content: string; description?: string }) {
-  if (typeof article.description === 'string') return article.description.trim();
-
-  const lines = article.content.split(/\r?\n/).map(line => line.trim());
-  const candidates = lines
-    .filter(line => line && !/^#{1,6}\s|^---+$/.test(line))
-    .map(line => line
-      .replace(/^(?:[-*+•–—]|\d+[.)])\s+/, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/https?:\/\/\S+/g, '')
-      .replace(/<\/?u>|\*{1,2}/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim())
-    .filter(line => line && line.toLocaleLowerCase('it') !== article.title.trim().toLocaleLowerCase('it'));
-  const text = candidates.find(line => line.length >= 25) ?? candidates[0] ?? '';
-  const sentence = text.match(/^.+?[.!?](?=\s|$)/)?.[0] ?? text;
-  if (sentence.length <= MAX_ARTICLE_SUBTITLE_LENGTH) return sentence;
-  const excerpt = sentence.slice(0, MAX_ARTICLE_SUBTITLE_LENGTH - 1);
-  const lastSpace = excerpt.lastIndexOf(' ');
-  return (lastSpace > 55 ? excerpt.slice(0, lastSpace) : excerpt).trimEnd() + '…';
+function getArticleSubtitle(article: { description?: string }) {
+  return typeof article.description === 'string' ? article.description.trim() : '';
 }
 
 type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
@@ -2177,13 +2159,13 @@ export default function FitaTaekwondoApp() {
                                 <BookOpen className="w-4 h-4" />
                               </div>
                               <div>
-                                <div className="flex flex-col items-start gap-0.5">
+                                <div className="flex flex-col items-start gap-0">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <h3 className={`break-words text-base leading-snug font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
                                     {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
                                     {(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
                                   </div>
-                                  {subtitle && <p className="mt-1 break-words text-xs leading-relaxed text-slate-600 sm:text-sm">{subtitle}</p>}
+                                  {subtitle && <p className="break-words text-xs leading-tight text-slate-600 sm:text-sm">{subtitle}</p>}
                                 </div>
                               </div>
                             </div>
