@@ -485,6 +485,7 @@ export default function FitaTaekwondoApp() {
   const lastSyncedNewsRef = useRef<string | null>(null);
   const newsSyncAvailableRef = useRef(false);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [articleSort, setArticleSort] = useState<'custom' | 'title-asc' | 'title-desc' | 'date-asc' | 'date-desc' | 'favorites-first'>('custom');
   const [prioritizeSuggested, setPrioritizeSuggested] = useState(true);
@@ -1598,7 +1599,7 @@ export default function FitaTaekwondoApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col justify-between pb-20 md:pb-0">
+    <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col justify-between pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
       
       {/* Toast Notifiche */}
       <AnimatePresence>
@@ -1666,7 +1667,7 @@ export default function FitaTaekwondoApp() {
 
         {/* --- HEADER --- */}
         <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-30">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 sm:py-4 flex items-center justify-between gap-3">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 sm:py-4 flex flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-3">
             <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setActiveSectionId('home')}>
               <div className="w-9 h-9 sm:w-12 sm:h-12 bg-[#0B1B3D] rounded-lg flex items-center justify-center text-white font-black text-base sm:text-xl shadow-md border-b-2 sm:border-b-4 border-[#A60F2D] shrink-0">
                 FITA
@@ -1677,8 +1678,8 @@ export default function FitaTaekwondoApp() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-1 max-w-xs sm:max-w-md ml-auto">
-              <div className="w-full relative flex items-center h-8 sm:h-9">
+            <div className="flex w-full min-w-0 items-center gap-2 sm:ml-auto sm:max-w-md sm:flex-1">
+              <div className="relative flex h-11 min-w-0 flex-1 items-center sm:h-9">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
@@ -1687,7 +1688,7 @@ export default function FitaTaekwondoApp() {
                   onFocus={() => setIsArticleSearchFocused(true)}
                   onBlur={() => window.setTimeout(() => setIsArticleSearchFocused(false), 120)}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full h-8 sm:h-9 bg-slate-100 border border-slate-300 rounded-lg pl-8 pr-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#0B1B3D]"
+                  className="h-full w-full bg-slate-100 border border-slate-300 rounded-lg pl-8 pr-2.5 text-base sm:text-sm text-slate-800 focus:outline-none focus:border-[#0B1B3D]"
                   aria-label="Cerca articoli e norme"
                   aria-autocomplete="list"
                   aria-expanded={isArticleSearchFocused && articleSearchSuggestions.length > 0}
@@ -1708,10 +1709,17 @@ export default function FitaTaekwondoApp() {
                           setOpenAccordions(prev => ({ ...prev, [sub.id]: true }));
                           setIsArticleSearchFocused(false);
                         }}
-                        className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50"
+                        className="block w-full border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-slate-50"
                       >
-                        <span className="block truncate text-xs font-bold text-[#0B1B3D]">{sub.title}</span>
+                        <span className="block break-words text-sm font-bold text-[#0B1B3D]">{sub.title}</span>
                         <span className="mt-0.5 block truncate text-[10px] text-slate-500">{section.shortTitle || section.title}{sub.tags?.length ? ` · ${sub.tags.slice(0, 3).join(', ')}` : ''}</span>
+                        {(() => {
+                          const query = searchQuery.trim();
+                          const content = sub.content.replace(/\s+/g, ' ');
+                          const match = content.toLowerCase().indexOf(query.toLowerCase());
+                          if (match < 0) return null;
+                          return <span className="mt-1 block break-words text-xs text-slate-600">{match > 36 ? '…' : ''}{content.slice(Math.max(0, match - 36), match)}<mark className="bg-amber-100 text-inherit">{content.slice(match, match + query.length)}</mark>{content.slice(match + query.length, match + query.length + 60)}{content.length > match + query.length + 60 ? '…' : ''}</span>;
+                        })()}
                       </button>
                     ))}
                   </div>
@@ -1789,7 +1797,7 @@ export default function FitaTaekwondoApp() {
         </nav>
 
         {/* --- CONTENUTO PRINCIPALE --- */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 w-full">
+        <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 w-full">
           
           {/* HOME / NEWS */}
           {activeSectionId === 'home' && (
@@ -1918,10 +1926,10 @@ export default function FitaTaekwondoApp() {
                   )}
                 </div>
 
-                <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 w-full sm:w-auto">
+                <div className={`grid w-full gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 ${['kyorugi', 'poomsae', 'freestyle'].includes(currentSection.id) ? 'grid-cols-3' : 'grid-cols-2'} sm:flex sm:w-auto`}>
                   <button
                     onClick={() => setActiveTabMode('rules')}
-                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-center text-xs font-bold leading-tight transition-all sm:min-h-0 sm:flex-row sm:gap-1.5 sm:px-3 ${
                       activeTabMode === 'rules' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600'
                     }`}
                   >
@@ -1930,7 +1938,7 @@ export default function FitaTaekwondoApp() {
                   {['kyorugi', 'poomsae', 'freestyle'].includes(currentSection.id) && (
                     <button
                       onClick={() => setActiveTabMode('showcase')}
-                      className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-center text-xs font-bold leading-tight transition-all sm:min-h-0 sm:flex-row sm:gap-1.5 sm:px-3 ${
                         activeTabMode === 'showcase' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600'
                       }`}
                     >
@@ -1939,11 +1947,11 @@ export default function FitaTaekwondoApp() {
                   )}
                   <button
                     onClick={() => setActiveTabMode('materials')}
-                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-center text-xs font-bold leading-tight transition-all sm:min-h-0 sm:flex-row sm:gap-1.5 sm:px-3 ${
                       activeTabMode === 'materials' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600'
                     }`}
                   >
-                    <Download className="w-3.5 h-3.5" /> Documenti ({currentSection.documents?.length || 0})
+                    <Download className="w-3.5 h-3.5" /> <span>Documenti <span className="hidden sm:inline">({currentSection.documents?.length || 0})</span></span>
                   </button>
                 </div>
               </div>
@@ -1959,7 +1967,10 @@ export default function FitaTaekwondoApp() {
               {activeTabMode === 'rules' && (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => setMobileFiltersOpen(true)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 md:hidden">Filtri{showOnlyFavorites ? ' · Preferiti' : ''}</button>
+                    {mobileFiltersOpen && <button type="button" aria-label="Chiudi filtri" onClick={() => setMobileFiltersOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" />}
+                    <div className={mobileFiltersOpen ? 'fixed inset-x-0 bottom-0 z-50 flex max-h-[75dvh] flex-col gap-4 overflow-auto rounded-t-2xl bg-white px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl md:static md:flex-row md:flex-wrap md:items-center md:gap-2 md:overflow-visible md:rounded-none md:p-0 md:shadow-none' : 'hidden flex-wrap items-center gap-2 md:flex'}>
+                      <div className="flex items-center justify-between md:hidden"><strong>Filtri e ordinamento</strong><button type="button" onClick={() => setMobileFiltersOpen(false)} className="min-h-11 rounded-lg px-3 font-semibold text-blue-800">Chiudi</button></div>
                       <button type="button" onClick={() => setShowOnlyFavorites(prev => !prev)} aria-pressed={showOnlyFavorites} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold ${showOnlyFavorites ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
                         <Star className={`h-4 w-4 ${showOnlyFavorites ? 'fill-amber-500 text-amber-500' : 'text-amber-500'}`} />
                         {showOnlyFavorites ? 'Preferiti' : 'Tutti'}
@@ -2041,9 +2052,9 @@ export default function FitaTaekwondoApp() {
                         <div id={`article-${sub.id}`} key={sub.id} className={`rounded-xl border shadow-sm overflow-hidden ${isHiddenForUsers ? 'border-slate-300 bg-slate-100' : 'border-slate-200 bg-white'} ${selectedArticleIds.includes(sub.id) ? 'border-red-300 ring-1 ring-red-200' : ''}`}>
                           <div
                             onClick={() => toggleAccordion(sub.id)}
-                            className="p-3.5 sm:p-5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 select-none"
+                            className="p-3 sm:p-5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 cursor-pointer hover:bg-slate-50 select-none"
                           >
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex min-w-0 flex-1 items-center gap-2.5">
                               {user && user.role === 'admin' && adminMode && isSelectingArticles && (
                                 <button
                                   type="button"
@@ -2055,13 +2066,13 @@ export default function FitaTaekwondoApp() {
                                   {selectedArticleIds.includes(sub.id) ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
                                 </button>
                               )}
-                              <div className={`p-2 rounded-lg shrink-0 ${isOpen ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                              <div className={`hidden p-2 rounded-lg shrink-0 sm:block ${isOpen ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-500'}`}>
                                 <BookOpen className="w-4 h-4" />
                               </div>
                               <div>
                                 <div className="flex flex-col items-start gap-0.5">
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <h3 className={`text-xs sm:text-base font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
+                                    <h3 className={`break-words text-base leading-snug font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
                                     {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
                                     {(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
                                   </div>
@@ -2078,18 +2089,19 @@ export default function FitaTaekwondoApp() {
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1 shrink-0">
+                            <div className={`flex items-center justify-end gap-1 ${user?.role === 'admin' && adminMode ? 'w-full flex-wrap sm:w-auto' : 'shrink-0'}`}>
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); toggleFavorite(sub.id); }}
-                                className={`p-1.5 rounded ${isFav ? 'text-amber-500 bg-amber-50' : 'text-slate-400'}`}
+                                aria-label={isFav ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"} aria-pressed={isFav}
+                                className={`flex h-11 w-11 items-center justify-center rounded ${isFav ? 'text-amber-500 bg-amber-50' : 'text-slate-400'}`}
                               >
                                 <Star className={`w-4 h-4 ${isFav ? 'fill-amber-500' : ''}`} />
                               </button>
 
 
                               {user && user.role === 'admin' && adminMode && (
-                                <div className="flex items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex flex-wrap items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
                                   <button type="button" disabled={storedArticleIndex === 0} onClick={() => handleMoveSubsection(currentSection.id, sub.id, -1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in alto" aria-label={`Sposta ${sub.title} in alto`}>↑</button>
                                   <button type="button" disabled={storedArticleIndex === currentSection.subsections.length - 1} onClick={() => handleMoveSubsection(currentSection.id, sub.id, 1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in basso" aria-label={`Sposta ${sub.title} in basso`}>↓</button>
                                   <button type="button" disabled={storedArticleIndex === 0} onClick={() => moveSubsectionToEdge(currentSection.id, sub.id, 'top')} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta all’inizio della sezione" aria-label={`Sposta ${sub.title} all’inizio della sezione`}>⇈</button>
@@ -2119,13 +2131,13 @@ export default function FitaTaekwondoApp() {
                           </div>
 
                           {isOpen && (
-                            <div className="p-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-700 leading-relaxed">
-                              <div className={`whitespace-pre-line text-xs sm:text-sm ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
+                            <div className="p-3 sm:p-5 bg-slate-50 border-t border-slate-100 text-slate-700">
+                              <div className={`whitespace-pre-line [overflow-wrap:anywhere] text-base leading-relaxed [&_p]:my-3 [&_h4]:text-base [&_h5]:text-base ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
                                 {renderRichContent(sub.content, openLinkedArticle)}
                               </div>
 
                               {((sub as any).source?.trim() || (sub as any).addedAt) && (
-                                <div className="mt-3 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
+                                <div className="mt-3 border-t border-slate-200 pt-3 break-words text-xs leading-relaxed text-slate-600">
                                   {(sub as any).addedAt && <p><span className="font-semibold text-slate-600">Aggiunto il:</span> {new Date((sub as any).addedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
                                   {(sub as any).source?.trim() && <p className="mt-1"><span className="font-semibold text-slate-600">Fonte / riferimento:</span> {(sub as any).source}</p>}
                                 </div>
@@ -2315,18 +2327,18 @@ export default function FitaTaekwondoApp() {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {currentSection.documents.map((doc) => (
-                        <div key={doc.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-2.5">
+                        <div key={doc.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-start gap-3">
+                          <div className="flex min-w-0 flex-1 basis-full items-start gap-2.5 sm:basis-auto">
                             <div className="p-2.5 rounded-lg bg-red-700 text-white font-black text-xs shrink-0">
                               {doc.format}
                             </div>
-                            <h4 className="font-bold text-xs sm:text-sm text-[#0B1B3D]">{doc.title}</h4>
+                            <h4 className="min-w-0 [overflow-wrap:anywhere] font-bold text-sm text-[#0B1B3D]">{doc.title}</h4>
                           </div>
 
                           <a
                             href={doc.url}
                             download={doc.title}
-                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1 shrink-0"
+                            className="min-h-11 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1 shrink-0"
                             onClick={(e) => {
                               if (!doc.url || doc.url === '#') {
                                 e.preventDefault();
@@ -2697,17 +2709,17 @@ export default function FitaTaekwondoApp() {
       </footer>
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <nav aria-label="Navigazione principale" className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0B1B3D] text-slate-300 border-t border-slate-800 z-40 px-1 py-1.5 flex items-stretch shadow-2xl">
+      <nav aria-label="Navigazione principale" className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0B1B3D] text-slate-300 border-t border-slate-800 z-40 px-1 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex items-stretch shadow-2xl">
         <button
           type="button"
           aria-label="Home"
           onClick={() => setActiveSectionId('home')}
-          className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg py-1 transition-colors ${
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg min-h-12 py-1 transition-colors ${
             activeSectionId === 'home' ? 'text-amber-400 font-bold' : 'text-slate-300'
           }`}
         >
           <HomeIcon className="h-5 w-5" />
-          <span className="whitespace-nowrap text-[10px] leading-tight font-semibold">Home</span>
+          <span className="max-w-full break-words text-center text-[10px] leading-tight font-semibold">Home</span>
         </button>
 
         {displayedSections.map((sec) => {
@@ -2726,12 +2738,12 @@ export default function FitaTaekwondoApp() {
               aria-label={sec.title}
               title={sec.title}
               onClick={() => { setActiveSectionId(sec.id); setActiveTabMode('rules'); }}
-              className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg py-1 transition-colors ${
+              className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg min-h-12 py-1 transition-colors ${
                 activeSectionId === sec.id ? 'text-amber-400 font-bold' : 'text-slate-300'
               }`}
             >
               <Icon className="h-5 w-5" />
-              <span className="whitespace-nowrap text-[10px] leading-tight font-semibold">{mobileNav.label}</span>
+              <span className="max-w-full break-words text-center text-[10px] leading-tight font-semibold">{mobileNav.label}</span>
             </button>
           );
         })}
@@ -2740,12 +2752,12 @@ export default function FitaTaekwondoApp() {
           type="button"
           aria-label={user ? 'Area personale' : 'Accedi'}
           onClick={() => user ? openProfilePage() : (setAuthMode('login'), setAuthModalOpen(true))}
-          className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg py-1 transition-colors ${
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg min-h-12 py-1 transition-colors ${
             user ? 'text-emerald-300 font-bold' : 'text-slate-300'
           }`}
         >
           <User className="h-5 w-5" />
-          <span className="whitespace-nowrap text-[10px] leading-tight font-semibold">{user ? 'Profilo' : 'Accedi'}</span>
+          <span className="max-w-full break-words text-center text-[10px] leading-tight font-semibold">{user ? 'Profilo' : 'Accedi'}</span>
         </button>
       </nav>
 
