@@ -47,6 +47,30 @@ import { formatPersonName } from '../lib/format-person-name';
 
 import { isDemoArticle } from '../lib/demo-articles';
 
+const MAX_ARTICLE_SUBTITLE_LENGTH = 100;
+
+function getArticleSubtitle(article: { title: string; content: string; description?: string }) {
+  if (typeof article.description === 'string') return article.description.trim();
+
+  const lines = article.content.split(/\r?\n/).map(line => line.trim());
+  const candidates = lines
+    .filter(line => line && !/^#{1,6}\s|^---+$/.test(line))
+    .map(line => line
+      .replace(/^(?:[-*+•–—]|\d+[.)])\s+/, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/<\/?u>|\*{1,2}/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim())
+    .filter(line => line && line.toLocaleLowerCase('it') !== article.title.trim().toLocaleLowerCase('it'));
+  const text = candidates.find(line => line.length >= 25) ?? candidates[0] ?? '';
+  const sentence = text.match(/^.+?[.!?](?=\s|$)/)?.[0] ?? text;
+  if (sentence.length <= MAX_ARTICLE_SUBTITLE_LENGTH) return sentence;
+  const excerpt = sentence.slice(0, MAX_ARTICLE_SUBTITLE_LENGTH - 1);
+  const lastSpace = excerpt.lastIndexOf(' ');
+  return (lastSpace > 55 ? excerpt.slice(0, lastSpace) : excerpt).trimEnd() + '…';
+}
+
 type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
 
 type AdminApprovalRequest = {
@@ -326,7 +350,7 @@ const DEFAULT_SECTIONS: Array<{
   shortTitle: string;
   subtitle: string;
   code: string;
-  subsections: Array<{ id: string; title: string; content: string; tags: string[]; media: Array<{ type: string; url: string; caption: string }> }>;
+  subsections: Array<{ id: string; title: string; content: string; description?: string; tags: string[]; media: Array<{ type: string; url: string; caption: string }> }>;
   documents: Array<{ id: string; title: string; format: string; size: string; date: string; description: string; url: string }>;
 }> = [
   {
@@ -521,6 +545,7 @@ export default function FitaTaekwondoApp() {
   const [editingSubsection, setEditingSubsection] = useState<any | null>(null);
   const [formSectionId, setFormSectionId] = useState('kyorugi');
   const [formTitle, setFormTitle] = useState('');
+  const [formSubtitle, setFormSubtitle] = useState('');
   const [formContent, setFormContent] = useState('');
   const [formSuggested, setFormSuggested] = useState(false);
   const articleContentInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1356,6 +1381,7 @@ export default function FitaTaekwondoApp() {
       hidden: (editingSubsection as any)?.hidden ?? false,
       suggested: formSuggested,
       title: formTitle,
+      description: formSubtitle.trim(),
       content: formContent,
       source: formSource.trim(),
       tags: formTags.split(',').map(t => t.trim()).filter(Boolean),
@@ -1437,6 +1463,7 @@ export default function FitaTaekwondoApp() {
     setEditingSubsection(sub);
     setFormSectionId(sectionId);
     setFormTitle(sub.title);
+    setFormSubtitle(getArticleSubtitle(sub).slice(0, MAX_ARTICLE_SUBTITLE_LENGTH));
     setFormSuggested(sub.suggested === true);
     setFormContent(sub.content);
     setFormTags(sub.tags ? sub.tags.join(', ') : '');
@@ -2075,7 +2102,7 @@ export default function FitaTaekwondoApp() {
                           onClick={() => {
                             setEditingSubsection(null);
                             setFormSectionId(currentSection.id);
-                            setFormTitle(''); setFormSuggested(false); setFormContent(''); setFormTags(''); setFormSource(''); setFormMediaUrl('');
+                            setFormTitle(''); setFormSubtitle(''); setFormSuggested(false); setFormContent(''); setFormTags(''); setFormSource(''); setFormMediaUrl('');
                             setSelectedFileName(null);
                             setIsEditingModalOpen(true);
                           }}
@@ -2123,6 +2150,7 @@ export default function FitaTaekwondoApp() {
                   ) : (
                     filteredSubsections.map((sub) => {
                       const isOpen = openAccordions[sub.id] ?? false;
+                      const subtitle = getArticleSubtitle(sub);
                       const isFav = favorites.includes(sub.id);
                       const isHiddenForUsers = (sub as any).hidden === true;
                       const storedArticleIndex = currentSection.subsections.findIndex(article => article.id === sub.id);
@@ -2155,6 +2183,7 @@ export default function FitaTaekwondoApp() {
                                     {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
                                     {(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
                                   </div>
+                                  {subtitle && <p className="mt-1 break-words text-xs leading-relaxed text-slate-600 sm:text-sm">{subtitle}</p>}
                                 </div>
                               </div>
                             </div>
@@ -2658,6 +2687,11 @@ export default function FitaTaekwondoApp() {
                 <div>
                   <label htmlFor="article-title" className="block text-slate-600 font-bold mb-1">Titolo *</label>
                   <input id="article-title" type="text" required value={formTitle} onChange={(e) => setFormTitle(e.target.value)} className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800 focus:outline-none focus:border-[#0B1B3D]" />
+                </div>
+
+                <div>
+                  <label htmlFor="article-subtitle" className="mb-1 block font-bold text-slate-600">Sottotitolo <span className="font-normal text-slate-500">(facoltativo)</span></label>
+                  <input id="article-subtitle" value={formSubtitle} onChange={event => setFormSubtitle(event.target.value)} maxLength={MAX_ARTICLE_SUBTITLE_LENGTH} placeholder="Una breve descrizione dell’articolo" className="w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800" />
                 </div>
 
                 <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900"><input type="checkbox" checked={formSuggested} onChange={e => setFormSuggested(e.target.checked)} /> Articolo suggerito</label>
