@@ -422,7 +422,8 @@ function mergeArticleSections(cloudSections: any[], deviceSections: any[]) {
       ...(cloudSection || {}),
       subsections: [...articleMap.values()],
       documents: cloudSection?.documents ?? deviceSection?.documents ?? [],
-      showcaseVideos: cloudSection?.showcaseVideos ?? deviceSection?.showcaseVideos ?? []
+      showcaseVideos: cloudSection?.showcaseVideos ?? deviceSection?.showcaseVideos ?? [],
+      showcaseGroupOrder: cloudSection?.showcaseGroupOrder ?? deviceSection?.showcaseGroupOrder ?? []
     };
   });
 }
@@ -466,7 +467,8 @@ function reconcileArticleSections(cloudSections: any[], deviceSections: any[], l
       ...cloudSection,
       subsections: [...cloudArticles.values()],
       documents: [...documents.values()],
-      showcaseVideos: cloudSection.showcaseVideos ?? deviceSection.showcaseVideos ?? []
+      showcaseVideos: cloudSection.showcaseVideos ?? deviceSection.showcaseVideos ?? [],
+      showcaseGroupOrder: cloudSection.showcaseGroupOrder ?? deviceSection.showcaseGroupOrder ?? []
     };
   });
 }
@@ -1039,6 +1041,25 @@ export default function FitaTaekwondoApp() {
     }));
   };
 
+  const moveShowcaseGroup = (groupName: string, direction: -1 | 1) => {
+    if (!user || user.role !== 'admin' || !adminMode) return;
+    setSections(prev => prev.map(section => {
+      if (section.id !== activeSectionId) return section;
+      const videos = (section as any).showcaseVideos || [];
+      const available = Array.from(new Set<string>(videos.map((video: any) => String(video.group || '').trim() || 'Generale')));
+      const saved: string[] = (section as any).showcaseGroupOrder || [];
+      const ordered = [
+        ...saved.filter(name => available.includes(name)),
+        ...available.filter(name => !saved.includes(name))
+      ];
+      const index = ordered.indexOf(groupName);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= ordered.length) return section;
+      [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
+      return { ...section, showcaseGroupOrder: ordered };
+    }));
+  };
+
   const handleSaveDocument = (e: React.FormEvent) => {
     e.preventDefault();
     if (!docTitle.trim()) return;
@@ -1466,12 +1487,20 @@ export default function FitaTaekwondoApp() {
 
   const displayedSections = user?.role === 'admin' && adminMode
     ? sections
-    : sections.filter(section => !(section as any).hidden).map(section => ({
+    : sections.map(section => ({
       ...section,
-      subsections: section.subsections.filter(sub => !(sub as any).hidden)
+      subsections: (section as any).hidden ? [] : section.subsections.filter(sub => !(sub as any).hidden)
     }));
 
   const currentSection = displayedSections.find(s => s.id === activeSectionId);
+  const isCurrentSectionUnavailable = Boolean((currentSection as any)?.hidden) && !(user?.role === 'admin' && adminMode);
+  const currentShowcaseVideos = (currentSection as any)?.showcaseVideos || [];
+  const availableShowcaseGroups = Array.from(new Set<string>(currentShowcaseVideos.map((video: any) => String(video.group || '').trim() || 'Generale')));
+  const savedShowcaseGroupOrder: string[] = (currentSection as any)?.showcaseGroupOrder || [];
+  const orderedShowcaseGroupNames = [
+    ...savedShowcaseGroupOrder.filter(groupName => availableShowcaseGroups.includes(groupName)),
+    ...availableShowcaseGroups.filter(groupName => !savedShowcaseGroupOrder.includes(groupName))
+  ];
 
   const articleSearchSuggestions = searchQuery.trim().length >= 2
     ? displayedSections.flatMap(section => section.subsections.map(sub => ({ section, sub })))
@@ -1889,7 +1918,15 @@ export default function FitaTaekwondoApp() {
                   )}
                 </div>
 
-                <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 w-full sm:w-auto">
+                {isCurrentSectionUnavailable ? (
+                <div role="status" className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-10 text-center shadow-sm">
+                  <EyeOff className="mb-3 h-7 w-7 text-slate-400" aria-hidden="true" />
+                  <h3 className="text-base font-bold text-[#0B1B3D]">Sezione temporaneamente non disponibile</h3>
+                  <p className="mt-1 max-w-md text-sm text-slate-500">I contenuti di “{currentSection.title}” sono temporaneamente nascosti. Riprova più tardi.</p>
+                </div>
+              ) : (
+                <>
+              <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 w-full sm:w-auto">
                   <button
                     onClick={() => setActiveTabMode('rules')}
                     className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
@@ -2184,11 +2221,17 @@ export default function FitaTaekwondoApp() {
                     <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500">Non ci sono ancora video in questa sezione.</div>
                   ) : (
                     <div className="space-y-6">
-                      {Array.from(new Set<string>(((currentSection as any).showcaseVideos || []).map((video: any) => String(video.group || '').trim() || 'Generale'))).map(groupName => {
-                        const groupVideos = ((currentSection as any).showcaseVideos || []).filter((video: any) => (String(video.group || '').trim() || 'Generale') === groupName);
+                      {orderedShowcaseGroupNames.map((groupName, groupIndex) => {
+                        const groupVideos = currentShowcaseVideos.filter((video: any) => (String(video.group || '').trim() || 'Generale') === groupName);
                         return (
                           <section key={groupName} className="space-y-3">
-                            <h4 className="border-b border-slate-200 pb-1 text-xs font-bold uppercase tracking-wide text-slate-600">{groupName}</h4>
+                            <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600">{groupName}</h4>
+                              {user?.role === 'admin' && adminMode && <div className="flex items-center">
+                                <button type="button" disabled={groupIndex === 0} onClick={() => moveShowcaseGroup(groupName, -1)} title="Sposta sezione in alto" aria-label={`Sposta la sezione ${groupName} in alto`} className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5 rotate-180" /></button>
+                                <button type="button" disabled={groupIndex === orderedShowcaseGroupNames.length - 1} onClick={() => moveShowcaseGroup(groupName, 1)} title="Sposta sezione in basso" aria-label={`Sposta la sezione ${groupName} in basso`} className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5" /></button>
+                              </div>}
+                            </div>
                             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                               {groupVideos.map((video: any, videoIndex: number) => {
                         const embedUrl = getShowcaseEmbedUrl(video.url);
@@ -2303,6 +2346,8 @@ export default function FitaTaekwondoApp() {
                     </div>
                   )}
                 </div>
+              )}
+                </>
               )}
             </div>
           )}
