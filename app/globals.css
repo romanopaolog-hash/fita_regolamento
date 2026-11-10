@@ -24,34 +24,33 @@ body {
 
 :root[data-portal-theme="night"] {
   color-scheme: dark;
-  --background: #151515;
-  --foreground: #f3f2ef;
-  --portal-card: #202020;
-  --portal-input: #191919;
-  --portal-muted: #c3c0bb;
-  --portal-border: #46433f;
+  --background: #101622;
+  --foreground: #e7edf7;
+  --portal-card: #192334;
+  --portal-input: #121c2c;
+  --portal-muted: #b1bfd3;
+  --portal-border: #43516a;
   & :is([class~="bg-[#F4F6F9]"], [class~="bg-[#f4f6f9]"]) { background-color: var(--background); }
-  & :is([class~="bg-[#0B1B3D]"], [class~="bg-slate-900"]) { background-color: #292826; }
   & :is([class~="bg-white"]) { background-color: var(--portal-card); }
-  & :is([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-slate-50/50"]) { background-color: #272624; }
-  & :is([class~="bg-slate-200"]) { background-color: #35332f; }
+  & :is([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-slate-50/50"]) { background-color: #202c40; }
+  & :is([class~="bg-slate-200"]) { background-color: #303e55; }
   & :is([class~="text-[#0B1B3D]"], [class~="text-slate-950"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"]) { color: var(--foreground); }
   & :is([class~="text-slate-600"], [class~="text-slate-500"], [class~="text-slate-400"]) { color: var(--portal-muted); }
   & :is([class~="text-[#A60F2D]"], [class~="text-red-700"], [class~="text-red-600"], [class~="text-red-800"]) { color: #fda4af; }
-  & :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-blue-900"], [class~="text-blue-950"]) { color: #b9d6ee; }
-  & :is([class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #e9cc9f; }
-  & :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"]) { color: #a6dfb6; }
-  & :is([class~="text-violet-800"], [class~="text-violet-700"]) { color: #d9c7e8; }
+  & :is([class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-blue-900"], [class~="text-blue-950"]) { color: #a9d1ff; }
+  & :is([class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-amber-900"], [class~="text-amber-950"]) { color: #fcd68a; }
+  & :is([class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"]) { color: #86efac; }
+  & :is([class~="text-violet-800"], [class~="text-violet-700"]) { color: #dbc4ff; }
   & :is([class~="border-slate-100"], [class~="border-slate-200"], [class~="border-slate-300"], [class~="border-slate-400"]) { border-color: var(--portal-border); }
-  & :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-blue-100/60"], [class~="bg-sky-50"], [class~="bg-sky-50/60"], [class~="bg-sky-100"], [class~="bg-sky-100/60"]) { background-color: #293139; }
-  & :is([class~="bg-amber-50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/60"], [class~="bg-yellow-50"], [class~="bg-yellow-50/60"], [class~="bg-yellow-100"], [class~="bg-yellow-100/60"]) { background-color: #372e24; }
-  & :is([class~="bg-red-50"], [class~="bg-red-50/60"], [class~="bg-red-100"], [class~="bg-red-100/60"], [class~="bg-rose-50"], [class~="bg-rose-50/60"], [class~="bg-rose-100"], [class~="bg-rose-100/60"]) { background-color: #402a2c; }
-  & :is([class~="bg-emerald-50"], [class~="bg-emerald-50/60"], [class~="bg-emerald-100"], [class~="bg-emerald-100/60"], [class~="bg-green-50"], [class~="bg-green-50/60"], [class~="bg-green-100"], [class~="bg-green-100/60"]) { background-color: #26382f; }
-  & :is([class~="bg-violet-50"], [class~="bg-violet-50/60"], [class~="bg-violet-100"], [class~="bg-violet-100/60"], [class~="bg-purple-50"], [class~="bg-purple-50/60"], [class~="bg-purple-100"], [class~="bg-purple-100/60"]) { background-color: #332d3c; }
-  & :is([class~="bg-[#FCECEF]"]) { background-color: #402a2c; }
-  & :is([class~="hover:bg-white"], [class~="hover:bg-slate-50"], [class~="hover:bg-slate-100"], [class~="hover:bg-slate-200"]):hover { background-color: #34312e; }
+  & :is([class~="bg-blue-50"], [class~="bg-blue-50/60"], [class~="bg-blue-100"], [class~="bg-blue-100/60"], [class~="bg-sky-50"], [class~="bg-sky-50/60"], [class~="bg-sky-100"], [class~="bg-sky-100/60"]) { background-color: #183452; }
+  & :is([class~="bg-amber-50"], [class~="bg-amber-50/60"], [class~="bg-amber-100"], [class~="bg-amber-100/60"], [class~="bg-yellow-50"], [class~="bg-yellow-50/60"], [class~="bg-yellow-100"], [class~="bg-yellow-100/60"]) { background-color: #3b2d1c; }
+  & :is([class~="bg-red-50"], [class~="bg-red-50/60"], [class~="bg-red-100"], [class~="bg-red-100/60"], [class~="bg-rose-50"], [class~="bg-rose-50/60"], [class~="bg-rose-100"], [class~="bg-rose-100/60"]) { background-color: #462634; }
+  & :is([class~="bg-emerald-50"], [class~="bg-emerald-50/60"], [class~="bg-emerald-100"], [class~="bg-emerald-100/60"], [class~="bg-green-50"], [class~="bg-green-50/60"], [class~="bg-green-100"], [class~="bg-green-100/60"]) { background-color: #183b35; }
+  & :is([class~="bg-violet-50"], [class~="bg-violet-50/60"], [class~="bg-violet-100"], [class~="bg-violet-100/60"], [class~="bg-purple-50"], [class~="bg-purple-50/60"], [class~="bg-purple-100"], [class~="bg-purple-100/60"]) { background-color: #33264d; }
+  & :is([class~="bg-[#FCECEF]"]) { background-color: #462634; }
+  & :is([class~="hover:bg-white"], [class~="hover:bg-slate-50"], [class~="hover:bg-slate-100"], [class~="hover:bg-slate-200"]):hover { background-color: #2d3a51; }
   & :is([class~="hover:text-slate-600"], [class~="hover:text-slate-900"], [class~="hover:text-[#0B1B3D]"]):hover { color: #fff; }
   & :is([class~="divide-slate-100"], [class~="divide-slate-200"]) > :not(:last-child) { border-color: var(--portal-border); }
-  & input::placeholder, & textarea::placeholder { color: #aaa6a0; }
+  & input::placeholder, & textarea::placeholder { color: #9aaac0; }
   & select option { background-color: var(--portal-input); color: var(--foreground); }
 }
