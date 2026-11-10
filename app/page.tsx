@@ -2163,9 +2163,10 @@ export default function FitaTaekwondoApp() {
                                   <div className="flex flex-wrap items-center gap-2">
                                     <h3 className={`break-words text-base leading-snug font-bold ${isHiddenForUsers ? 'text-slate-500' : 'text-[#0B1B3D]'}`}>{sub.title}</h3>
                                     {isHiddenForUsers && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">Nascosto</span>}
-                                    {(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
+                                    {(sub as any).suggested && <span className="hidden rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800 md:inline-block">Suggerito</span>}
                                   </div>
                                   {subtitle && <p className="break-words text-xs leading-tight text-slate-600 sm:text-sm">{subtitle}</p>}
+                                  {(sub as any).suggested && <span className="mt-1 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800 md:hidden">Suggerito</span>}
                                 </div>
                               </div>
                             </div>
