@@ -133,7 +133,7 @@ export async function sendNewsPush(notice: NewsNotice) {
           method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000),
           body,
           headers: {
-            TTL: '86400', Topic: topic, Authorization: 'vapid t=' + jwt + '.' + signature + ', k=' + keys.publicKey,
+            TTL: '86400', Urgency: 'high', Topic: topic, Authorization: 'vapid t=' + jwt + '.' + signature + ', k=' + keys.publicKey,
             ...(body ? { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream' } : {}),
           },
         });
