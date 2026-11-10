@@ -4,7 +4,7 @@ import { isAccountApproved } from '../../../lib/account-approval';
 
 import { isDemoArticle } from '../../../lib/demo-articles';
 
-function removeDemoArticles(sections: ArticleSection[]) {
+function removeDemoArticles(sections: ArticleSection[]): ArticleSection[] {
   return sections.map(section => ({
     ...section,
     subsections: section.subsections.filter(article => !isDemoArticle(article.id)),
