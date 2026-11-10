@@ -7,7 +7,7 @@ export async function GET(_request: Request, context: { params: Promise<{ size: 
   const { size } = await context.params;
   if (!['180', '192', '512'].includes(size)) return new Response(null, { status: 404 });
   const width = Number(size);
-  const png = await readFile(join(process.cwd(), 'public/fita-home-icon.png'));
+  const png = await readFile(join(process.cwd(), 'public/fita-launcher-icon.png'));
 
   return new ImageResponse(
     createElement('img', { src: 'data:image/png;base64,' + png.toString('base64'), width, height: width }),

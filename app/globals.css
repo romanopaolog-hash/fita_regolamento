@@ -54,13 +54,3 @@ body {
   & input::placeholder, & textarea::placeholder { color: #9aaac0; }
   & select option { background-color: var(--portal-input); color: var(--foreground); }
 }
-
-/* Also covers Home Screen shortcuts that open in a mobile browser tab. */
-@media (display-mode: standalone), (max-width: 767px) {
-  .fita-home-background {
-    --fita-home-art-size: clamp(12rem, 65vw, 22rem);
-    min-height: 75dvh;
-    padding-top: calc(var(--fita-home-art-size) + 0.75rem);
-    background: #111e38 url('/fita-app-home-background.png') center top / auto var(--fita-home-art-size) no-repeat;
-  }
-}
