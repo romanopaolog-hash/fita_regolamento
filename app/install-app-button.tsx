@@ -50,12 +50,14 @@ export default function InstallAppButton() {
       setShowHelp(true);
       return;
     }
-    setPrompt(null);
     try {
-      await prompt.prompt();
+      const request = prompt.prompt();
+      setPrompt(null);
+      await request;
       const choice = await prompt.userChoice;
       if (choice.outcome === 'accepted') setShowHelp(false);
     } catch {
+      setPrompt(null);
       setShowHelp(true);
     }
   };
@@ -63,8 +65,8 @@ export default function InstallAppButton() {
   if (installed) return null;
   return (
     <>
-      <button type="button" onClick={() => void install()} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] sm:px-3 sm:text-xs font-bold text-blue-950 hover:bg-blue-100">
-        <Download className="h-4 w-4" aria-hidden="true" /> Download app
+      <button type="button" onClick={() => void install()} aria-label="Installa l’app" title="Installa l’app" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#0B1B3D] focus-visible:outline-2 focus-visible:outline-blue-600">
+        <Download className="h-4 w-4" aria-hidden="true" />
       </button>
       {showHelp && createPortal(
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">
