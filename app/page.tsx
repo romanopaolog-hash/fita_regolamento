@@ -1776,7 +1776,7 @@ export default function FitaTaekwondoApp() {
                         className="block w-full border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-slate-50"
                       >
                         <span className="block break-words text-sm font-bold text-[#0B1B3D]">{sub.title}</span>
-                        <span className="mt-0.5 block truncate text-[10px] text-slate-500">{section.shortTitle || section.title}{sub.tags?.length ? ` · ${sub.tags.slice(0, 3).join(', ')}` : ''}</span>
+                        <span className="mt-0.5 block truncate text-[10px] text-slate-500">{section.shortTitle || section.title}</span>
                         {(() => {
                           const query = searchQuery.trim();
                           const content = sub.content.replace(/\s+/g, ' ');
@@ -2156,15 +2156,6 @@ export default function FitaTaekwondoApp() {
                                     {(sub as any).suggested && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-800">Suggerito</span>}
                                   </div>
                                 </div>
-                                {sub.tags && (
-                                  <div className="flex flex-wrap gap-1 mt-0.5">
-                                    {sub.tags.map((tag, idx) => (
-                                      <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium border border-slate-200">
-                                        #{tag}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             </div>
 
@@ -2219,6 +2210,16 @@ export default function FitaTaekwondoApp() {
                               <div style={{ fontSize: articleTextSize }} className={`whitespace-pre-line [overflow-wrap:anywhere] leading-relaxed [&_p]:my-3 [&_h3]:text-[1.2em] [&_h4]:text-[1.1em] [&_h5]:text-[1em] ${isHiddenForUsers ? 'text-slate-500' : 'text-slate-800'}`}>
                                 {renderRichContent(sub.content, openLinkedArticle)}
                               </div>
+
+                              {sub.tags?.length > 0 && (
+                                <div className="mb-3 flex flex-wrap gap-1.5">
+                                  {sub.tags.map((tag, idx) => (
+                                    <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium border border-slate-200">
+                                      #{tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
 
                               {((sub as any).source?.trim() || (sub as any).addedAt) && (
                                 <div className="mt-3 border-t border-slate-200 pt-3 break-words text-xs leading-relaxed text-slate-600">
