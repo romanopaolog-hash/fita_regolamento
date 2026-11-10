@@ -53,6 +53,8 @@ function getArticleSubtitle(article: { description?: string }) {
   return typeof article.description === 'string' ? article.description.trim() : '';
 }
 
+import InstallAppButton from './install-app-button';
+
 type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
 
 type AdminApprovalRequest = {
@@ -1680,6 +1682,7 @@ export default function FitaTaekwondoApp() {
         <section className="w-full min-w-0 max-w-md rounded-2xl border border-slate-200 bg-white p-3 shadow-xl sm:p-6">
           <h1 className="mb-1 text-xl font-black text-[#0B1B3D]">FITA Regolamento</h1>
           <p className="mb-5 text-sm text-slate-600">Accedi o crea un account per consultare il sito.</p>
+          <div className="mb-4"><InstallAppButton /></div>
           <div className="mb-4 flex gap-2">
             <button type="button" onClick={() => setAuthMode('login')} className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${authMode === 'login' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Accedi</button>
             <button type="button" onClick={() => setAuthMode('register')} className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${authMode === 'register' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>Registrati</button>
@@ -1963,6 +1966,7 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <InstallAppButton />
                   {/* FILTRI RIPRISTINATI: TUTTI, REGIONALE, NAZIONALE, REGOLAMENTO */}
                   <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-bold overflow-x-auto w-full sm:w-auto">
                     {['Tutti', 'Regionale', 'Nazionale', 'Regolamento'].map((cat) => (
