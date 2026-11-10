@@ -9,12 +9,12 @@ async function pushUser() {
   if (!userId) return null;
   const clerk = await clerkClient();
   const user = await clerk.users.getUser(userId);
-  return isAccountApproved(user) && user.unsafeMetadata.newsNotifications === true ? user : null;
+  return isAccountApproved(user) ? user : null;
 }
 
 export async function GET() {
   try {
-    if (!(await pushUser())) return Response.json({ error: 'Attiva prima gli avvisi per le news.' }, { status: 403, headers });
+    if (!(await pushUser())) return Response.json({ error: 'Accedi con un account approvato per attivare le notifiche.' }, { status: 403, headers });
     const keys = await pushKeys(true);
     return Response.json({ publicKey: keys?.publicKey }, { headers });
   } catch {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   }
   try {
     const user = await pushUser();
-    if (!user) return Response.json({ error: 'Attiva prima gli avvisi per le news.' }, { status: 403, headers });
+    if (!user) return Response.json({ error: 'Accedi con un account approvato per attivare le notifiche.' }, { status: 403, headers });
     const body = await request.text();
     if (body.length > 3000) return Response.json({ error: 'Richiesta troppo grande.' }, { status: 413, headers });
     const endpoint = validPushEndpoint(JSON.parse(body)?.endpoint);

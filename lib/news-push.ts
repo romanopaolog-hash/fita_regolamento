@@ -73,7 +73,7 @@ export async function sendNewsPush() {
         if (!endpoint) return;
         if (!consent.has(device.userId)) {
           consent.set(device.userId, clerk.users.getUser(device.userId)
-            .then(user => isAccountApproved(user) && user.unsafeMetadata.newsNotifications === true)
+            .then(user => isAccountApproved(user))
             .catch(() => false));
         }
         if (!(await consent.get(device.userId))) return;

@@ -490,7 +490,7 @@ export default function FitaTaekwondoApp() {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushStatus, setPushStatus] = useState('');
   const [notificationItems, setNotificationItems] = useState<PortalNotice[]>([]);
-  const [notificationPreferenceBusy, setNotificationPreferenceBusy] = useState(false);
+  const [devicePushEnabled, setDevicePushEnabled] = useState(false);
 
   const [adminMode, setAdminMode] = useState(true);
 
@@ -812,10 +812,6 @@ export default function FitaTaekwondoApp() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const [newsPreference, setNewsPreference] = useState<{ userId: string; enabled: boolean } | null>(null);
-  const newsNotificationsEnabled = newsPreference && newsPreference.userId === clerkUser?.id
-    ? newsPreference.enabled
-    : clerkUser?.unsafeMetadata.newsNotifications === true;
   const canReadNotifications = Boolean(clerkUser && getAccountApprovalStatus(clerkUser) === 'approved');
   const noticeStorageKey = clerkUser ? `tkd_notice_seen_${clerkUser.id}` : '';
 
@@ -844,7 +840,7 @@ export default function FitaTaekwondoApp() {
       try {
         const [articles, news] = await Promise.all([
           read('/api/articles'),
-          newsNotificationsEnabled ? read('/api/news') : Promise.resolve(null)
+          read('/api/news')
         ]);
         const notices: PortalNotice[] = [];
         for (const section of articles.sections ?? []) {
@@ -871,9 +867,9 @@ export default function FitaTaekwondoApp() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [noticeStorageKey, canReadNotifications, newsNotificationsEnabled, notificationsOpen]);
+  }, [noticeStorageKey, canReadNotifications, notificationsOpen]);
 
-  const visibleNotices = notificationItems.filter(item => !dismissedNoticeIds.includes(item.id) && (item.kind !== 'News' || newsNotificationsEnabled));
+  const visibleNotices = notificationItems.filter(item => !dismissedNoticeIds.includes(item.id));
   const unreadNotices = visibleNotices.filter(item => item.at > notificationSeenAt).length;
 
   const dismissNotices = (ids: string[]) => {
@@ -882,7 +878,17 @@ export default function FitaTaekwondoApp() {
     try { localStorage.setItem(noticeStorageKey + '_dismissed', JSON.stringify(next)); } catch {}
   };
 
-  const enableDevicePush = async () => {
+  useEffect(() => {
+    if (!notificationsOpen || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    let active = true;
+    void navigator.serviceWorker.getRegistration('/')
+      .then(registration => registration?.pushManager.getSubscription())
+      .then(subscription => { if (active) setDevicePushEnabled(Boolean(subscription)); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [notificationsOpen]);
+
+  const toggleDevicePush = async () => {
     if (pushBusy) return;
     if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window)) {
       setPushStatus('Se usi iPhone o iPad, aggiungi il sito alla schermata Home e aprilo dall’icona. Sugli altri dispositivi usa un browser con supporto Web Push.');
@@ -891,6 +897,14 @@ export default function FitaTaekwondoApp() {
     setPushBusy(true);
     setPushStatus('');
     try {
+      if (devicePushEnabled) {
+        const registration = await navigator.serviceWorker.getRegistration('/');
+        const subscription = await registration?.pushManager.getSubscription();
+        if (subscription && !(await subscription.unsubscribe())) throw new Error('Impossibile disattivare le notifiche su questo dispositivo.');
+        setDevicePushEnabled(false);
+        setPushStatus('Notifiche di sistema disattivate su questo dispositivo.');
+        return;
+      }
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         setPushStatus('Consenti le notifiche nelle impostazioni del browser per attivarle.');
@@ -915,6 +929,7 @@ export default function FitaTaekwondoApp() {
         const failure = await result.json().catch(() => null);
         throw new Error(failure?.error || 'Registrazione del dispositivo non riuscita.');
       }
+      setDevicePushEnabled(true);
       setPushStatus('Notifiche di sistema attive su questo dispositivo.');
     } catch (error) {
       setPushStatus(error instanceof Error ? error.message : 'Impossibile attivare le notifiche su questo dispositivo.');
@@ -927,21 +942,6 @@ export default function FitaTaekwondoApp() {
     const latest = Math.max(notificationSeenAt, ...visibleNotices.map(item => item.at));
     setNotificationSeenAt(latest);
     try { localStorage.setItem(noticeStorageKey, String(latest)); } catch {}
-  };
-
-  const updateNewsNotifications = async (enabled: boolean) => {
-    if (!clerkUser || notificationPreferenceBusy) return;
-    const previous = newsPreference;
-    setNewsPreference({ userId: clerkUser.id, enabled });
-    setNotificationPreferenceBusy(true);
-    try {
-      await clerkUser.update({ unsafeMetadata: { ...clerkUser.unsafeMetadata, newsNotifications: enabled } });
-    } catch {
-      setNewsPreference(previous);
-      showToast('Impossibile salvare la preferenza delle notifiche.');
-    } finally {
-      setNotificationPreferenceBusy(false);
-    }
   };
 
   const toggleFavorite = (id: string) => {
@@ -1865,14 +1865,9 @@ export default function FitaTaekwondoApp() {
                       <h2 className="font-bold text-[#0B1B3D]">Notifiche</h2>
                       <button type="button" onClick={() => setNotificationsOpen(false)} aria-label="Chiudi notifiche" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button>
                     </div>
-                    <label className="my-2 flex items-center gap-2 rounded-lg bg-slate-100 p-2 text-sm">
-                      <input type="checkbox" checked={newsNotificationsEnabled} disabled={notificationPreferenceBusy} onChange={event => void updateNewsNotifications(event.currentTarget.checked)} /> Ricevi notifiche per le news
-                    </label>
-                    {newsNotificationsEnabled && (
-                      <button type="button" disabled={pushBusy || notificationPreferenceBusy} onClick={() => void enableDevicePush()} className="mb-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 disabled:opacity-50">
-                        {pushBusy ? 'Attivazione…' : 'Attiva notifiche su questo dispositivo'}
-                      </button>
-                    )}
+                    <button type="button" disabled={pushBusy} onClick={() => void toggleDevicePush()} className="my-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 disabled:opacity-50">
+                      {pushBusy ? 'Aggiornamento…' : devicePushEnabled ? 'Disattiva notifiche su questo dispositivo' : 'Attiva notifiche su questo dispositivo'}
+                    </button>
                     {pushStatus && <p role="status" className="my-2 text-xs text-slate-700">{pushStatus}</p>}
                     {visibleNotices.length > 0 && (
                       <div className="flex flex-wrap gap-x-3">
