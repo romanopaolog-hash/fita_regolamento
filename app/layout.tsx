@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { themeBootstrap } from "../lib/portal-theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,10 +25,19 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="it"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
       <body className="min-h-full flex flex-col">
-        <ClerkProvider>{children}</ClerkProvider>
+        <ClerkProvider appearance={{ variables: {
+          colorBackground: "var(--portal-card)",
+          colorForeground: "var(--foreground)",
+          colorInput: "var(--portal-input)",
+          colorInputForeground: "var(--foreground)",
+          colorMutedForeground: "var(--portal-muted)",
+          colorBorder: "var(--portal-border)",
+        } }}>{children}</ClerkProvider>
       </body>
     </html>
   );

@@ -8,6 +8,8 @@ import { UserProfile, useClerk, useUser } from '@clerk/nextjs';
 import { ArrowLeft, ShieldCheck, UserRound } from 'lucide-react';
 import { formatPersonName } from '../../lib/format-person-name';
 
+import ThemeSettings from './theme-settings';
+
 const regions = [
   'Campania', 'Lazio', 'Lombardia', 'Piemonte', 'Sicilia',
   'Veneto', 'Emilia-Romagna', 'Puglia', 'Toscana',
@@ -234,6 +236,8 @@ export default function ProfileCenter() {
             )}
           </section>
         )}
+
+        <ThemeSettings />
 
         <section aria-labelledby="account-security-title" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 id="account-security-title" className="mb-4 text-lg font-bold text-[#0B1B3D]">Email, password e account</h2>
