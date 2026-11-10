@@ -11,7 +11,7 @@ type InstallPrompt = Event & {
 
 export default function InstallAppButton() {
   const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
-  const [installed, setInstalled] = useState<boolean | null>(null);
+  const [installed, setInstalled] = useState(false);
   const [isAppleMobile, setIsAppleMobile] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -28,7 +28,6 @@ export default function InstallAppButton() {
       setPrompt(event as InstallPrompt);
     };
     const onInstalled = () => {
-      setInstalled(true);
       setPrompt(null);
       setShowHelp(false);
     };
@@ -62,11 +61,12 @@ export default function InstallAppButton() {
     }
   };
 
-  if (installed !== false) return null;
+  if (installed) return null;
   return (
     <>
-      <button type="button" onClick={() => void install()} aria-label="Installa l’app" title="Installa l’app" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-800 transition-colors hover:bg-blue-100 hover:text-[#0B1B3D] focus-visible:outline-2 focus-visible:outline-blue-600">
+      <button type="button" onClick={() => void install()} aria-label="Installa l’app" title="Installa l’app" className="fita-install-web-only inline-flex min-h-10 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-blue-200 px-1.5 text-[10px] font-bold leading-tight sm:flex-row sm:gap-1.5 sm:px-2.5 sm:text-xs bg-blue-50 text-blue-800 transition-colors hover:bg-blue-100 hover:text-[#0B1B3D] focus-visible:outline-2 focus-visible:outline-blue-600">
         <Download className="h-4 w-4" aria-hidden="true" />
+        <span>Download app</span>
       </button>
       {showHelp && createPortal(
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">

@@ -54,3 +54,7 @@ body {
   & input::placeholder, & textarea::placeholder { color: #9aaac0; }
   & select option { background-color: var(--portal-input); color: var(--foreground); }
 }
+
+@media (display-mode: standalone) {
+  .fita-install-web-only { display: none; }
+}

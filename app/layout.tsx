@@ -17,7 +17,7 @@ const geistMono = Geist({
 export const metadata: Metadata = {
   title: "FITA Regolamento",
   appleWebApp: { capable: true, title: "FITA Regolamento" },
-  icons: { apple: [{ url: "/fita-launcher-icon.png", sizes: "1024x1024", type: "image/png" }] },
+  icons: { apple: [{ url: "/fita-launcher-192.png", sizes: "192x192", type: "image/png" }] },
   description: "Portale del regolamento e dei materiali per gli arbitri FITA.",
 };
 
