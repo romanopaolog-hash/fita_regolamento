@@ -399,6 +399,62 @@ function mergeArticleSections(cloudSections: any[], deviceSections: any[]) {
   });
 }
 
+type ShowcaseVideo = {
+  id: string;
+  title: string;
+  url: string;
+  comment?: string;
+  group?: string;
+  addedAt?: string;
+};
+
+function showcaseGroupName(video: ShowcaseVideo) {
+  return video.group?.trim() || 'Generale';
+}
+
+function reconcileShowcaseVideos(cloud: ShowcaseVideo[], device: ShowcaseVideo[], snapshot: ShowcaseVideo[]) {
+  if (JSON.stringify(device) === JSON.stringify(snapshot)) return cloud;
+  if (JSON.stringify(cloud) === JSON.stringify(snapshot)) return device;
+
+  const byId = new Map(cloud.map(video => [video.id, video]));
+  const prior = new Map(snapshot.map(video => [video.id, video]));
+  const deviceIds = new Set(device.map(video => video.id));
+  for (const video of snapshot) {
+    if (!deviceIds.has(video.id) && JSON.stringify(byId.get(video.id)) === JSON.stringify(video)) {
+      byId.delete(video.id);
+    }
+  }
+  for (const video of device) {
+    const before = prior.get(video.id);
+    if (!before) {
+      byId.set(video.id, video);
+    } else if (JSON.stringify(video) !== JSON.stringify(before)) {
+      const remote = byId.get(video.id);
+      if (!remote) {
+        byId.set(video.id, video);
+        continue;
+      }
+      byId.set(video.id, {
+        ...remote,
+        title: video.title === before.title ? remote.title : video.title,
+        url: video.url === before.url ? remote.url : video.url,
+        comment: video.comment === before.comment ? remote.comment : video.comment,
+        group: video.group === before.group ? remote.group : video.group,
+      });
+    }
+  }
+
+  const priorOrder = snapshot.filter(video => deviceIds.has(video.id)).map(video => video.id);
+  const deviceOrder = device.filter(video => prior.has(video.id)).map(video => video.id);
+  const reordered = priorOrder.some((id, index) => id !== deviceOrder[index]);
+  const newDeviceIds = device.filter(video => !prior.has(video.id)).map(video => video.id);
+  const order = reordered ? device.map(video => video.id) : [...newDeviceIds, ...cloud.map(video => video.id)];
+  return [...new Set([...order, ...byId.keys()])].flatMap(id => {
+    const video = byId.get(id);
+    return video ? [video] : [];
+  });
+}
+
 function reconcileArticleSections(cloudSections: any[], deviceSections: any[], lastSyncedSections: any[]) {
   const cloudById = new Map(cloudSections.map(section => [section.id, section]));
   const deviceById = new Map(deviceSections.map(section => [section.id, section]));
@@ -438,8 +494,14 @@ function reconcileArticleSections(cloudSections: any[], deviceSections: any[], l
       ...cloudSection,
       subsections: [...cloudArticles.values()],
       documents: [...documents.values()],
-      showcaseVideos: cloudSection.showcaseVideos ?? deviceSection.showcaseVideos ?? [],
-      showcaseGroupOrder: cloudSection.showcaseGroupOrder ?? deviceSection.showcaseGroupOrder ?? []
+      title: deviceSection.title !== snapshotSection.title ? deviceSection.title : cloudSection.title,
+      shortTitle: deviceSection.shortTitle !== snapshotSection.shortTitle ? deviceSection.shortTitle : cloudSection.shortTitle,
+      showcaseVideos: reconcileShowcaseVideos(
+        cloudSection.showcaseVideos ?? [], deviceSection.showcaseVideos ?? [], snapshotSection.showcaseVideos ?? []
+      ),
+      showcaseGroupOrder: JSON.stringify(deviceSection.showcaseGroupOrder ?? []) !== JSON.stringify(snapshotSection.showcaseGroupOrder ?? [])
+        ? deviceSection.showcaseGroupOrder ?? []
+        : cloudSection.showcaseGroupOrder ?? []
     };
   });
 }
@@ -519,7 +581,8 @@ export default function FitaTaekwondoApp() {
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
-  const [showcaseFormOpen, setShowcaseFormOpen] = useState(false);
+  const [showcaseFormSectionId, setShowcaseFormSectionId] = useState<string | null>(null);
+  const [sectionRename, setSectionRename] = useState<{ sectionId: string; group?: string; name: string } | null>(null);
   const [editingShowcaseVideoId, setEditingShowcaseVideoId] = useState<string | null>(null);
   const [showcaseTitle, setShowcaseTitle] = useState('');
   const [showcaseUrl, setShowcaseUrl] = useState('');
@@ -676,6 +739,7 @@ export default function FitaTaekwondoApp() {
 
     const timer = window.setTimeout(async () => {
       try {
+        const priorSnapshot: any[] = lastSyncedSectionsRef.current ? JSON.parse(lastSyncedSectionsRef.current) : [];
         const response = await fetch('/api/articles', {
           method: 'PUT',
           headers: {
@@ -689,12 +753,10 @@ export default function FitaTaekwondoApp() {
           articleSyncEtagRef.current = latest.etag ?? null;
           lastSyncedSectionsRef.current = Array.isArray(latest.sections) ? JSON.stringify(latest.sections) : null;
           if (Array.isArray(latest.sections)) {
-            const savedSnapshot = localStorage.getItem('tkd_articles_last_synced_v1');
-            let priorSnapshot: any[] = [];
-            if (savedSnapshot) { try { priorSnapshot = JSON.parse(savedSnapshot); } catch {} }
-            setSections(priorSnapshot.length
-              ? reconcileArticleSections(removeDemoContent(latest.sections), sections, priorSnapshot)
-              : mergeArticleSections(removeDemoContent(latest.sections), sections));
+            const latestSections = removeDemoContent(withLegacyArticleDates(latest.sections));
+            setSections(previous => priorSnapshot.length
+              ? reconcileArticleSections(latestSections, previous, withLegacyArticleDates(priorSnapshot))
+              : mergeArticleSections(latestSections, previous));
           }
           showToast('Ho unito gli aggiornamenti recenti. Attendi un istante per completare la sincronizzazione.');
           return;
@@ -1156,9 +1218,18 @@ export default function FitaTaekwondoApp() {
     showToast('Notizia eliminata.');
   };
 
+  const openShowcaseEditor = (sectionId: string, video?: ShowcaseVideo) => {
+    setEditingShowcaseVideoId(video?.id ?? null);
+    setShowcaseTitle(video?.title ?? '');
+    setShowcaseUrl(video?.url ?? '');
+    setShowcaseComment(video?.comment ?? '');
+    setShowcaseGroup(video?.group ?? '');
+    setShowcaseFormSectionId(sectionId);
+  };
+
   const handleSaveShowcaseVideo = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || user.role !== 'admin' || !adminMode) return;
+    if (!user || user.role !== 'admin' || !adminMode || !showcaseFormSectionId) return;
     const title = showcaseTitle.trim();
     const url = showcaseUrl.trim();
     if (!title || !url) return;
@@ -1175,12 +1246,12 @@ export default function FitaTaekwondoApp() {
       addedAt: new Date().toISOString()
     };
     setSections(prev => prev.map(section => {
-      if (section.id !== activeSectionId) return section;
-      const videos = (section as any).showcaseVideos || [];
+      if (section.id !== showcaseFormSectionId) return section;
+      const videos: ShowcaseVideo[] = (section as any).showcaseVideos || [];
       return {
         ...section,
         showcaseVideos: editingId
-          ? videos.map((item: any) => item.id === editingId ? { ...item, ...video, addedAt: item.addedAt } : item)
+          ? videos.map(item => item.id === editingId ? { ...item, ...video, addedAt: item.addedAt ?? video.addedAt } : item)
           : [video, ...videos]
       };
     }));
@@ -1189,8 +1260,36 @@ export default function FitaTaekwondoApp() {
     setShowcaseComment('');
     setShowcaseGroup('');
     setEditingShowcaseVideoId(null);
-    setShowcaseFormOpen(false);
+    setShowcaseFormSectionId(null);
     showToast(editingId ? 'Modifiche salvate.' : 'Video aggiunto.');
+  };
+
+  const saveSectionName = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!isAccountAdmin || !adminMode || !sectionRename) return;
+    const name = sectionRename.name.trim();
+    if (!name) return;
+    const { sectionId, group } = sectionRename;
+    const section = sections.find(item => item.id === sectionId);
+    if (!section) return;
+
+    if (group !== undefined && orderedShowcaseGroupNames.some(item => item !== group && item.toLocaleLowerCase('it') === name.toLocaleLowerCase('it'))) {
+      showToast('Esiste già un gruppo video con questo nome.');
+      return;
+    }
+
+    setSections(previous => previous.map(item => {
+      if (item.id !== sectionId) return item;
+      if (group === undefined) return { ...item, title: name, shortTitle: name };
+      const videos: ShowcaseVideo[] = (item as any).showcaseVideos || [];
+      return {
+        ...item,
+        showcaseVideos: videos.map(video => showcaseGroupName(video) === group ? { ...video, group: name } : video),
+        showcaseGroupOrder: orderedShowcaseGroupNames.map(value => value === group ? name : value),
+      };
+    }));
+    setSectionRename(null);
+    showToast('Nome aggiornato.');
   };
 
   const moveShowcaseVideo = (videoId: string, direction: -1 | 1, groupName: string) => {
@@ -2107,9 +2206,14 @@ export default function FitaTaekwondoApp() {
                   <h2 className="text-lg sm:text-2xl font-black text-[#0B1B3D]">{currentSection.title}</h2>
                   <p className="text-xs text-slate-500">{currentSection.subtitle}</p>
                   {isAccountAdmin && adminMode && (
-                    <button type="button" onClick={() => toggleSectionVisibility(currentSection.id)} className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100">
-                      {(currentSection as any).hidden ? 'Riattiva sezione per gli utenti' : 'Nascondi temporaneamente la sezione agli utenti'}
-                    </button>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => setSectionRename({ sectionId: currentSection.id, name: currentSection.title })} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-[#0B1B3D]">
+                        <Edit3 className="h-3.5 w-3.5" /> Rinomina sezione
+                      </button>
+                      <button type="button" onClick={() => toggleSectionVisibility(currentSection.id)} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100">
+                        {(currentSection as any).hidden ? 'Riattiva sezione per gli utenti' : 'Nascondi temporaneamente la sezione agli utenti'}
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -2383,46 +2487,11 @@ export default function FitaTaekwondoApp() {
                       <p className="mt-0.5 text-xs text-slate-500">Video con commenti e dimostrazioni.</p>
                     </div>
                     {user?.role === 'admin' && adminMode && (
-                      <button type="button" onClick={() => {
-                        if (showcaseFormOpen) {
-                          setShowcaseFormOpen(false);
-                          setEditingShowcaseVideoId(null);
-                          setShowcaseTitle('');
-                          setShowcaseUrl('');
-                          setShowcaseComment('');
-                          setShowcaseGroup('');
-                        } else {
-                          setEditingShowcaseVideoId(null);
-                          setShowcaseTitle('');
-                          setShowcaseUrl('');
-                          setShowcaseComment('');
-                          setShowcaseGroup('');
-                          setShowcaseFormOpen(true);
-                        }
-                      }} className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-xs font-bold text-white">
-                        {showcaseFormOpen ? 'Annulla' : '+ Aggiungi video'}
+                      <button type="button" onClick={() => openShowcaseEditor(currentSection.id)} className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-xs font-bold text-white">
+                        + Aggiungi video
                       </button>
                     )}
                   </div>
-
-                  {showcaseFormOpen && user?.role === 'admin' && adminMode && (
-                    <form onSubmit={handleSaveShowcaseVideo} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-                      <label className="block text-xs font-bold text-slate-600">Titolo video
-                        <input required value={showcaseTitle} onChange={event => setShowcaseTitle(event.target.value)} placeholder="Es. Calcio girato in salto" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
-                      </label>
-                      <label className="block text-xs font-bold text-slate-600">Link video (YouTube, Vimeo, Instagram, TikTok o file MP4)
-                        <input required type="url" value={showcaseUrl} onChange={event => setShowcaseUrl(event.target.value)} placeholder="https://…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
-                      </label>
-                      <label className="block text-xs font-bold text-slate-600">Commento
-                        <textarea value={showcaseComment} onChange={event => setShowcaseComment(event.target.value)} rows={3} placeholder="Descrivi cosa mostra il video…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
-                      </label>
-                      <label className="block text-xs font-bold text-slate-600">Sezione <span className="font-normal text-slate-400">(facoltativa)</span>
-                        <input value={showcaseGroup} onChange={event => setShowcaseGroup(event.target.value)} placeholder="Es. Calci girati, Equilibrio…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
-                        <span className="mt-1 block font-normal text-slate-500">I video con la stessa sezione appariranno raggruppati insieme.</span>
-                      </label>
-                      <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">{editingShowcaseVideoId ? 'Salva modifiche' : 'Salva video'}</button>
-                    </form>
-                  )}
 
                   {((currentSection as any).showcaseVideos || []).length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500">Non ci sono ancora video in questa sezione.</div>
@@ -2432,9 +2501,10 @@ export default function FitaTaekwondoApp() {
                         const groupVideos = currentShowcaseVideos.filter((video: any) => (String(video.group || '').trim() || 'Generale') === groupName);
                         return (
                           <section key={groupName} className="space-y-3">
-                            <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                            <div className="flex flex-wrap items-center justify-between gap-1 border-b border-slate-200 pb-1">
                               <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600">{groupName}</h4>
                               {user?.role === 'admin' && adminMode && <div className="flex items-center">
+                                <button type="button" onClick={() => setSectionRename({ sectionId: currentSection.id, group: groupName, name: groupName })} aria-label={`Rinomina gruppo ${groupName}`} className="inline-flex items-center gap-1 rounded p-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Edit3 className="h-3.5 w-3.5" /> Rinomina</button>
                                 <button type="button" disabled={groupIndex === 0} onClick={() => moveShowcaseGroup(groupName, -1)} title="Sposta sezione in alto" aria-label={`Sposta la sezione ${groupName} in alto`} className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5 rotate-180" /></button>
                                 <button type="button" disabled={groupIndex === orderedShowcaseGroupNames.length - 1} onClick={() => moveShowcaseGroup(groupName, 1)} title="Sposta sezione in basso" aria-label={`Sposta la sezione ${groupName} in basso`} className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5" /></button>
                               </div>}
@@ -2459,8 +2529,8 @@ export default function FitaTaekwondoApp() {
                                 <video src={video.url} controls preload="metadata" className="h-full w-full object-contain" />
                               )}
                             </div>
-                            <div className="flex items-start justify-between gap-3 p-4">
-                              <div>
+                            <div className="flex flex-wrap items-start justify-between gap-3 p-4">
+                              <div className="min-w-0 break-words">
                                 <h4 className="text-sm font-bold text-[#0B1B3D]">{video.title}</h4>
                                 {video.comment && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{video.comment}</p>}
                                 <a href={video.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900">Apri video originale</a>
@@ -2469,14 +2539,7 @@ export default function FitaTaekwondoApp() {
                                 <div className="flex shrink-0 items-center gap-1">
                                   <button type="button" disabled={videoIndex === 0} onClick={() => moveShowcaseVideo(video.id, -1, groupName)} aria-label={`Sposta ${video.title} in alto`} title="Sposta in alto" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-4 w-4 rotate-180" /></button>
                                   <button type="button" disabled={videoIndex === groupVideos.length - 1} onClick={() => moveShowcaseVideo(video.id, 1, groupName)} aria-label={`Sposta ${video.title} in basso`} title="Sposta in basso" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
-                                  <button type="button" onClick={() => {
-                                    setEditingShowcaseVideoId(video.id);
-                                    setShowcaseTitle(video.title || '');
-                                    setShowcaseUrl(video.url || '');
-                                    setShowcaseComment(video.comment || '');
-                                    setShowcaseGroup(video.group || '');
-                                    setShowcaseFormOpen(true);
-                                  }} aria-label={`Modifica ${video.title}`} title="Modifica video" className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-700"><Edit3 className="h-4 w-4" /></button>
+                                  <button type="button" onClick={() => openShowcaseEditor(currentSection.id, video)} aria-label={`Modifica ${video.title}`} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Edit3 className="h-4 w-4" /> Modifica</button>
                                   <button type="button" onClick={() => {
                                     if (!confirm('Rimuovere questo video?')) return;
                                     setSections(prev => prev.map(section => section.id === activeSectionId
@@ -2485,7 +2548,7 @@ export default function FitaTaekwondoApp() {
                                     ));
                                     if (editingShowcaseVideoId === video.id) {
                                       setEditingShowcaseVideoId(null);
-                                      setShowcaseFormOpen(false);
+                                      setShowcaseFormSectionId(null);
                                     }
                                     showToast('Video rimosso.');
                                   }} aria-label="Rimuovi video" title="Rimuovi video" className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
@@ -2948,7 +3011,7 @@ export default function FitaTaekwondoApp() {
               }`}
             >
               <Icon className="h-5 w-5" />
-              <span className="max-w-full break-words text-center text-[10px] leading-tight font-semibold">{mobileNav.label}</span>
+              <span className="max-w-full break-words text-center text-[10px] leading-tight font-semibold">{sec.title === DEFAULT_SECTIONS.find(section => section.id === sec.id)?.title ? mobileNav.label : sec.title}</span>
             </button>
           );
         })}
@@ -3138,6 +3201,53 @@ export default function FitaTaekwondoApp() {
           </div>
         )}
       </AnimatePresence>
+
+      {showcaseFormSectionId && isAccountAdmin && adminMode && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-3" onKeyDown={event => { if (event.key === 'Escape') setShowcaseFormSectionId(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="showcase-editor-title" className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl sm:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 id="showcase-editor-title" className="text-lg font-bold text-[#0B1B3D]">{editingShowcaseVideoId ? 'Modifica video' : 'Aggiungi video'}</h2>
+              <button type="button" onClick={() => setShowcaseFormSectionId(null)} aria-label="Chiudi" className="rounded p-2 text-slate-600 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={handleSaveShowcaseVideo} className="space-y-3">
+              <label className="block text-xs font-bold text-slate-600">Titolo video
+                <input autoFocus required value={showcaseTitle} onChange={event => setShowcaseTitle(event.target.value)} placeholder="Es. Calcio girato in salto" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+              </label>
+              <label className="block text-xs font-bold text-slate-600">Link video (YouTube, Vimeo, Instagram, TikTok o file MP4)
+                <input required type="url" value={showcaseUrl} onChange={event => setShowcaseUrl(event.target.value)} placeholder="https://…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+              </label>
+              <label className="block text-xs font-bold text-slate-600">Commento
+                <textarea value={showcaseComment} onChange={event => setShowcaseComment(event.target.value)} rows={3} placeholder="Descrivi cosa mostra il video…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+              </label>
+              <label className="block text-xs font-bold text-slate-600">Sezione <span className="font-normal text-slate-400">(facoltativa)</span>
+                <input value={showcaseGroup} onChange={event => setShowcaseGroup(event.target.value)} placeholder="Es. Calci girati, Equilibrio…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+                <span className="mt-1 block font-normal text-slate-500">I video con la stessa sezione appariranno raggruppati insieme.</span>
+              </label>
+              <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">{editingShowcaseVideoId ? 'Salva modifiche' : 'Salva video'}</button>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {sectionRename && isAccountAdmin && adminMode && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-3" onKeyDown={event => { if (event.key === 'Escape') setSectionRename(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="section-rename-title" className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl sm:p-6">
+            <h2 id="section-rename-title" className="mb-3 text-lg font-bold text-[#0B1B3D]">{sectionRename.group === undefined ? 'Rinomina sezione' : 'Rinomina gruppo video'}</h2>
+            <form onSubmit={saveSectionName} className="space-y-3">
+              <label className="block text-sm font-semibold text-slate-700">Nome
+                <input autoFocus required maxLength={80} value={sectionRename.name} onChange={event => {
+                  const name = event.target.value;
+                  setSectionRename(current => current ? { ...current, name } : null);
+                }} className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800" />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setSectionRename(null)} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Annulla</button>
+                <button type="submit" className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-sm font-bold text-white">Salva nome</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
 
       {/* VIDEO PLAYER MODAL */}
       <AnimatePresence>
