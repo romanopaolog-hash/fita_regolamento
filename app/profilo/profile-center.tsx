@@ -21,6 +21,7 @@ type ManagedUser = {
   email: string;
   role: 'admin' | 'user';
   createdAt: number;
+  region: string | null;
 };
 
 export default function ProfileCenter() {
@@ -118,6 +119,7 @@ export default function ProfileCenter() {
       await user.update({
         unsafeMetadata: { ...user.unsafeMetadata, region },
       });
+      setManagedUsers(current => current.map(item => item.id === user.id ? { ...item, region } : item));
       setRegionMessage('Regione aggiornata.');
     } catch {
       setRegionMessage('Non è stato possibile aggiornare la regione.');
@@ -208,6 +210,9 @@ export default function ProfileCenter() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="break-words font-semibold text-slate-900">{formatPersonName(managedUser.name)}</p>
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
+                            {managedUser.region || 'Regione non indicata'}
+                          </span>
                           <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-bold ${managedUser.role === 'admin' ? 'border-amber-300 bg-amber-100 text-amber-950' : 'border-slate-200 bg-slate-100 text-slate-700'}`}>
                             {managedUser.role === 'admin' ? <><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /> Admin</> : <><UserRound className="h-3.5 w-3.5" aria-hidden="true" /> Utente</>}
                           </span>

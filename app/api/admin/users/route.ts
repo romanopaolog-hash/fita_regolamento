@@ -43,6 +43,7 @@ async function countAdmins(clerk: Awaited<ReturnType<typeof clerkClient>>) {
 }
 
 function publicUser(user: Awaited<ReturnType<Awaited<ReturnType<typeof clerkClient>>['users']['getUser']>>) {
+  const savedRegion = user.unsafeMetadata.region;
   return {
     id: user.id,
     name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Utente',
@@ -51,6 +52,7 @@ function publicUser(user: Awaited<ReturnType<Awaited<ReturnType<typeof clerkClie
       ?? 'Email non disponibile',
     role: user.publicMetadata.role === 'admin' ? 'admin' : 'user',
     createdAt: user.createdAt,
+    region: typeof savedRegion === 'string' ? savedRegion.trim() || null : null,
   };
 }
 
