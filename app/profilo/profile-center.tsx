@@ -9,6 +9,7 @@ import { ArrowLeft, ShieldCheck, UserRound } from 'lucide-react';
 import { formatPersonName } from '../../lib/format-person-name';
 
 import ThemeSettings from './theme-settings';
+import ArticleReports from './article-reports';
 
 const regions = [
   'Campania', 'Lazio', 'Lombardia', 'Piemonte', 'Sicilia',
@@ -176,6 +177,8 @@ export default function ProfileCenter() {
             {regionMessage && <p role="status" className="text-sm text-slate-600">{regionMessage}</p>}
           </form>
         </section>
+
+        {isAdmin && <ArticleReports />}
 
         {isAdmin && (
           <section aria-labelledby="user-management-title" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">

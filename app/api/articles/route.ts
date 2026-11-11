@@ -1,8 +1,9 @@
-import { BlobPreconditionFailedError, get, head, put } from '@vercel/blob';
+import { BlobPreconditionFailedError, head, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from '../../../lib/account-approval';
 
 import { isDemoArticle } from '../../../lib/demo-articles';
+import { ARTICLES_PATH, readArticles, type ArticleSection } from '../../../lib/article-archive';
 
 function removeDemoArticles(sections: ArticleSection[]): ArticleSection[] {
   return sections.map(section => ({
@@ -11,27 +12,7 @@ function removeDemoArticles(sections: ArticleSection[]): ArticleSection[] {
   }));
 }
 
-const ARTICLES_PATH = 'fita-regolamento/articles.json';
 const MAX_BODY_SIZE = 2_000_000;
-
-type ArticleSection = {
-  id: string;
-  hidden?: boolean;
-  subsections: Array<{ id: string; title: string; content: string; hidden?: boolean }>;
-  [key: string]: unknown;
-};
-
-async function readArticles() {
-  const blob = await get(ARTICLES_PATH, { access: 'private', useCache: false });
-  if (!blob) return { sections: null, etag: null, url: null };
-
-  const text = await new Response(blob.stream).text();
-  const data = JSON.parse(text) as { sections?: ArticleSection[] };
-  if (!Array.isArray(data.sections)) throw new Error('Invalid shared article data');
-
-  const metadata = await head(blob.blob.url);
-  return { sections: data.sections, etag: metadata.etag, url: blob.blob.url };
-}
 
 function isValidSections(value: unknown): value is ArticleSection[] {
   if (!Array.isArray(value) || value.length > 100) return false;

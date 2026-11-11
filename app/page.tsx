@@ -9,6 +9,7 @@ import {
   User,
   LogOut,
   Star,
+  Flag,
   ChevronDown,
   Video,
   Swords,
@@ -54,6 +55,7 @@ function getArticleSubtitle(article: { description?: string }) {
 }
 
 import InstallAppButton from './install-app-button';
+import { ARTICLE_REPORT_MAX_LENGTH } from '../lib/article-report';
 
 type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
 
@@ -590,6 +592,9 @@ export default function FitaTaekwondoApp() {
   const [showcaseGroup, setShowcaseGroup] = useState('');
   const [movingArticle, setMovingArticle] = useState<{ id: string; title: string; sourceSectionId: string } | null>(null);
   const [moveTargetSectionId, setMoveTargetSectionId] = useState('');
+  const [reportArticle, setReportArticle] = useState<{ id: string; title: string } | null>(null);
+  const [reportSending, setReportSending] = useState(false);
+  const [reportError, setReportError] = useState('');
 
   // Form Articoli / News / Documenti
   const [editingSubsection, setEditingSubsection] = useState<any | null>(null);
@@ -1564,6 +1569,51 @@ export default function FitaTaekwondoApp() {
     window.setTimeout(() => document.getElementById(`article-${articleId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
   };
 
+  useEffect(() => {
+    if (!isSectionsLoaded || !isAccountAdmin) return;
+    const url = new URL(window.location.href);
+    const articleId = url.searchParams.get('articolo');
+    if (!articleId) return;
+    url.searchParams.delete('articolo');
+    window.history.replaceState(window.history.state, '', url);
+    if (!sections.some(section => section.subsections.some(article => article.id === articleId))) {
+      showToast('L’articolo segnalato non è più disponibile.');
+      return;
+    }
+    openLinkedArticle(articleId);
+  }, [isSectionsLoaded, isAccountAdmin, sections]);
+
+  const submitArticleReport = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!reportArticle || reportSending) return;
+    const data = new FormData(event.currentTarget);
+    const message = String(data.get('message') ?? '').trim();
+    if (!message) {
+      setReportError('Scrivi una breve spiegazione.');
+      return;
+    }
+
+    setReportSending(true);
+    setReportError('');
+    try {
+      const response = await fetch('/api/article-reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ articleId: reportArticle.id, kind: data.get('kind'), message }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || 'Invio non riuscito. Riprova.');
+      }
+      setReportArticle(null);
+      showToast('Segnalazione inviata agli admin.');
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : 'Invio non riuscito. Riprova.');
+    } finally {
+      setReportSending(false);
+    }
+  };
+
   const handleSaveSubsection = (e: React.FormEvent) => {
     e.preventDefault();
     if (isUploadingArticleMedia || !formTitle.trim() || !formContent.trim()) return;
@@ -2387,6 +2437,13 @@ export default function FitaTaekwondoApp() {
                                 className={`flex h-11 w-11 items-center justify-center rounded ${isFav ? 'text-amber-500 bg-amber-50' : 'text-slate-400'}`}
                               >
                                 <Star className={`w-4 h-4 ${isFav ? 'fill-amber-500' : ''}`} />
+                              </button>
+                              <button type="button" onClick={event => {
+                                event.stopPropagation();
+                                setReportError('');
+                                setReportArticle({ id: sub.id, title: sub.title });
+                              }} aria-label={`Segnala un errore o proponi una modifica a ${sub.title}`} title="Segnala o suggerisci una correzione" className="flex h-11 w-10 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-[#0B1B3D]">
+                                <Flag className="h-4 w-4" aria-hidden="true" />
                               </button>
 
 
@@ -3259,6 +3316,41 @@ export default function FitaTaekwondoApp() {
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setSectionRename(null)} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Annulla</button>
                 <button type="submit" className="rounded-lg bg-[#0B1B3D] px-3 py-2 text-sm font-bold text-white">Salva nome</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {reportArticle && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-3" onKeyDown={event => {
+          if (event.key === 'Escape' && !reportSending) setReportArticle(null);
+        }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="article-report-title" className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl sm:p-6">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 id="article-report-title" className="text-lg font-bold text-[#0B1B3D]">Segnala un articolo</h2>
+                <p className="mt-1 break-words text-sm text-slate-600">{reportArticle.title}</p>
+              </div>
+              <button type="button" onClick={() => setReportArticle(null)} disabled={reportSending} aria-label="Chiudi" className="rounded p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+            <form onSubmit={submitArticleReport} className="space-y-3">
+              <label className="block text-sm font-semibold text-slate-700">Tipo
+                <select name="kind" autoFocus className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800">
+                  <option value="errore">Errore da correggere</option>
+                  <option value="suggerimento">Suggerimento</option>
+                </select>
+              </label>
+              <label className="block text-sm font-semibold text-slate-700">Messaggio per gli admin
+                <textarea name="message" required maxLength={ARTICLE_REPORT_MAX_LENGTH} rows={4} placeholder="Indica il punto dell’articolo e la modifica che proponi." className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-base text-slate-800" />
+              </label>
+              {reportError && <p role="alert" className="text-sm text-red-700">{reportError}</p>}
+              <div className="flex justify-end">
+                <button type="submit" disabled={reportSending} className="rounded-lg bg-[#0B1B3D] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+                  {reportSending ? 'Invio…' : 'Invia agli admin'}
+                </button>
               </div>
             </form>
           </section>
