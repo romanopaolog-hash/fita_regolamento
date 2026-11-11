@@ -2628,7 +2628,7 @@ export default function FitaTaekwondoApp() {
       <AnimatePresence>
         {isQuickImportModalOpen && user && user.role === 'admin' && adminMode && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-4xl bg-white rounded-xl border border-slate-200 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div className="w-full max-w-7xl bg-white rounded-xl border border-slate-200 shadow-2xl max-h-[96dvh] overflow-y-auto">
               <div className="sticky top-0 z-10 bg-white flex items-center justify-between p-4 sm:p-5 border-b border-slate-200">
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-[#0B1B3D]">Importazione rapida articoli</h3>
@@ -2639,7 +2639,7 @@ export default function FitaTaekwondoApp() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 sm:p-5">
+              <div className="grid grid-cols-1 items-start gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
                 <div className="space-y-3">
                   <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
                     <div className="flex items-center justify-between gap-2 mb-2">
@@ -2692,8 +2692,45 @@ export default function FitaTaekwondoApp() {
                   />
                 </div>
 
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-[#0B1B3D]">Anteprima</h4>
+                    <span className="px-2 py-1 rounded bg-slate-100 text-slate-600 font-semibold">
+                      {parseBulkArticles(bulkImportText).articles.length} articoli validi
+                    </span>
+                  </div>
+
+                  {parseBulkArticles(bulkImportText).errors.length > 0 && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 space-y-1" role="status">
+                      {parseBulkArticles(bulkImportText).errors.map((error, index) => <p key={index}>{error}</p>)}
+                      <p className="font-semibold">Correggi il testo: l’importazione avviene solo se tutti i blocchi sono validi.</p>
+                    </div>
+                  )}
+
+                  {parseBulkArticles(bulkImportText).articles.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-slate-500">
+                      L’anteprima degli articoli apparirà qui dopo aver incollato il testo.
+                    </div>
+                  ) : (
+                    <div className="max-h-[68dvh] space-y-2 overflow-y-auto pr-1 lg:max-h-[72dvh]">
+                      {parseBulkArticles(bulkImportText).articles.map((article, index) => (
+                        <div key={index} className="rounded-lg border border-slate-200 p-3">
+                          <div className="flex items-start gap-2">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 font-bold">{index + 1}</span>
+                            <div className="min-w-0">
+                              <h5 className="font-bold text-slate-800">{article.title}</h5>
+                              {article.tags.length > 0 && <p className="mt-1 text-[10px] text-slate-500">Tag: {article.tags.join(', ')}</p>}
+                              <p className="mt-2 whitespace-pre-line text-slate-600">{article.content.length > 280 ? `${article.content.slice(0, 280)}…` : article.content}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {bulkImportReviewItems && (
-                  <section className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3" aria-label="Revisione possibili duplicati">
+                  <section className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-3 lg:col-span-2" aria-label="Revisione possibili duplicati">
                     <div>
                       <h4 className="font-bold text-amber-950">Possibili articoli duplicati</h4>
                       <p className="mt-1 text-[11px] text-amber-900">Confronta i titoli simili e deseleziona quelli che non vuoi importare. Gli altri articoli restano selezionati.</p>
@@ -2716,43 +2753,6 @@ export default function FitaTaekwondoApp() {
                     <button type="button" onClick={() => setBulkImportReviewItems(null)} className="text-xs font-bold text-slate-700 underline">Torna alla modifica del testo</button>
                   </section>
                 )}
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-[#0B1B3D]">Anteprima</h4>
-                    <span className="px-2 py-1 rounded bg-slate-100 text-slate-600 font-semibold">
-                      {parseBulkArticles(bulkImportText).articles.length} articoli validi
-                    </span>
-                  </div>
-
-                  {parseBulkArticles(bulkImportText).errors.length > 0 && (
-                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 space-y-1" role="status">
-                      {parseBulkArticles(bulkImportText).errors.map((error, index) => <p key={index}>{error}</p>)}
-                      <p className="font-semibold">Correggi il testo: l’importazione avviene solo se tutti i blocchi sono validi.</p>
-                    </div>
-                  )}
-
-                  {parseBulkArticles(bulkImportText).articles.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-slate-500">
-                      L’anteprima degli articoli apparirà qui dopo aver incollato il testo.
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
-                      {parseBulkArticles(bulkImportText).articles.map((article, index) => (
-                        <div key={index} className="rounded-lg border border-slate-200 p-3">
-                          <div className="flex items-start gap-2">
-                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 font-bold">{index + 1}</span>
-                            <div className="min-w-0">
-                              <h5 className="font-bold text-slate-800">{article.title}</h5>
-                              {article.tags.length > 0 && <p className="mt-1 text-[10px] text-slate-500">Tag: {article.tags.join(', ')}</p>}
-                              <p className="mt-2 whitespace-pre-line text-slate-600">{article.content.length > 280 ? `${article.content.slice(0, 280)}…` : article.content}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
 
               <form onSubmit={handleBulkImport} className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white p-4 sm:px-5">
