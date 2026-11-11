@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { SignIn, useClerk, useUser } from '@clerk/nextjs';
 import { getAccountApprovalStatus } from '../lib/account-approval';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -522,7 +522,7 @@ export default function FitaTaekwondoApp() {
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [articleSort, setArticleSort] = useState<'custom' | 'title-asc' | 'title-desc' | 'date-asc' | 'date-desc' | 'favorites-first'>('custom');
   const [prioritizeSuggested, setPrioritizeSuggested] = useState(true);
-  const [bulkImportReviewItems, setBulkImportReviewItems] = useState<Array<{ article: any; matches: Array<{ title: string; section: string; score: number }>; include: boolean }> | null>(null);
+  const [bulkImportReviewItems, setBulkImportReviewItems] = useState<Array<{ sourceIndex: number; article: { title: string }; matches: Array<{ title: string; section: string; score: number }> }> | null>(null);
   const [selectedNewsCategory, setSelectedNewsCategory] = useState<string>('Tutti');
 
   const [activeSectionId, setActiveSectionId] = useState('home');
@@ -610,6 +610,14 @@ export default function FitaTaekwondoApp() {
   const [isUploadingArticleMedia, setIsUploadingArticleMedia] = useState(false);
   const [isQuickImportModalOpen, setIsQuickImportModalOpen] = useState(false);
   const [bulkImportText, setBulkImportText] = useState('');
+  const [excludedBulkArticleIndices, setExcludedBulkArticleIndices] = useState<number[]>([]);
+  const bulkImportPreview = useMemo(() => parseBulkArticles(bulkImportText), [bulkImportText]);
+  const bulkImportCandidates = useMemo(() => {
+    const excluded = new Set(excludedBulkArticleIndices);
+    return bulkImportPreview.articles.flatMap((article, sourceIndex) =>
+      excluded.has(sourceIndex) ? [] : [{ article, sourceIndex }]
+    );
+  }, [bulkImportPreview, excludedBulkArticleIndices]);
   const [bulkImportSectionId, setBulkImportSectionId] = useState('kyorugi');
 
   const [newsTitle, setNewsTitle] = useState('');
@@ -1593,20 +1601,19 @@ export default function FitaTaekwondoApp() {
     e.preventDefault();
     if (!user || user.role !== 'admin' || !adminMode) return;
 
-    const { articles, errors } = parseBulkArticles(bulkImportText);
-    if (errors.length > 0) { showToast(errors[0]); return; }
-    if (articles.length === 0) { showToast('Incolla almeno un articolo valido prima di importarli.'); return; }
+    if (bulkImportPreview.errors.length > 0) { showToast(bulkImportPreview.errors[0]); return; }
+    if (bulkImportCandidates.length === 0) { showToast('Seleziona almeno un articolo da importare.'); return; }
 
     const targetSection = sections.find(section => section.id === bulkImportSectionId);
     if (!targetSection) { showToast('Seleziona una sezione del regolamento valida.'); return; }
 
     if (!bulkImportReviewItems) {
       const existing = sections.flatMap(section => section.subsections.map((item: any) => ({ ...item, sectionTitle: section.title })));
-      const reviewItems = articles.map((article, index) => {
-        const fromThisImport = articles.slice(0, index).map(item => ({ ...item, sectionTitle: 'Questo stesso import' }));
+      const reviewItems = bulkImportCandidates.map(({ article, sourceIndex }, index) => {
+        const fromThisImport = bulkImportCandidates.slice(0, index).map(item => ({ ...item.article, sectionTitle: 'Questo stesso import' }));
         const matches = findSimilarArticles(article, [...existing, ...fromThisImport])
           .map(({ item, score }) => ({ title: item.title, section: item.sectionTitle, score }));
-        return { article, matches, include: true };
+        return { sourceIndex, article, matches };
       });
       if (reviewItems.some(item => item.matches.length > 0)) {
         setBulkImportReviewItems(reviewItems);
@@ -1615,10 +1622,7 @@ export default function FitaTaekwondoApp() {
       }
     }
 
-    const articlesToImport = bulkImportReviewItems
-      ? bulkImportReviewItems.filter(item => item.include).map(item => item.article)
-      : articles;
-    const importedSubsections = articlesToImport.map((article, index) => ({
+    const importedSubsections = bulkImportCandidates.map(({ article }, index) => ({
       id: `sub_bulk_${Date.now()}_${index}`,
       addedAt: new Date().toISOString(),
       title: article.title,
@@ -1635,14 +1639,16 @@ export default function FitaTaekwondoApp() {
     setActiveTabMode('rules');
     setIsQuickImportModalOpen(false);
     setBulkImportText('');
+    setExcludedBulkArticleIndices([]);
     setBulkImportReviewItems(null);
     showToast(`Importati ${importedSubsections.length} articoli in "${targetSection.title}".`);
   };
 
-  const toggleBulkReviewItem = (index: number) => {
-    setBulkImportReviewItems(previous => previous?.map((item, itemIndex) =>
-      itemIndex === index ? { ...item, include: !item.include } : item
-    ) ?? null);
+  const setBulkArticleIncluded = (sourceIndex: number, included: boolean) => {
+    setExcludedBulkArticleIndices(previous => {
+      if (included) return previous.filter(index => index !== sourceIndex);
+      return previous.includes(sourceIndex) ? previous : [...previous, sourceIndex];
+    });
   };
 
   const handleEditClick = (sub: any, sectionId: string) => {
@@ -2684,7 +2690,7 @@ export default function FitaTaekwondoApp() {
                   <textarea
                     id="bulk-import-text"
                     value={bulkImportText}
-                    onChange={(e) => { setBulkImportText(e.target.value); setBulkImportReviewItems(null); }}
+                    onChange={(e) => { setBulkImportText(e.target.value); setExcludedBulkArticleIndices([]); setBulkImportReviewItems(null); }}
                     disabled={!!bulkImportReviewItems}
                     placeholder={BULK_ARTICLE_TEMPLATE}
                     rows={14}
@@ -2696,29 +2702,39 @@ export default function FitaTaekwondoApp() {
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-[#0B1B3D]">Anteprima</h4>
                     <span className="px-2 py-1 rounded bg-slate-100 text-slate-600 font-semibold">
-                      {parseBulkArticles(bulkImportText).articles.length} articoli validi
+                      {bulkImportCandidates.length} da importare
                     </span>
                   </div>
 
-                  {parseBulkArticles(bulkImportText).errors.length > 0 && (
+                  {bulkImportPreview.errors.length > 0 && (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 space-y-1" role="status">
-                      {parseBulkArticles(bulkImportText).errors.map((error, index) => <p key={index}>{error}</p>)}
+                      {bulkImportPreview.errors.map((error, index) => <p key={index}>{error}</p>)}
                       <p className="font-semibold">Correggi il testo: l’importazione avviene solo se tutti i blocchi sono validi.</p>
                     </div>
                   )}
 
-                  {parseBulkArticles(bulkImportText).articles.length === 0 ? (
+                  {excludedBulkArticleIndices.length > 0 && (
+                    <button type="button" onClick={() => { setExcludedBulkArticleIndices([]); setBulkImportReviewItems(null); }} className="text-xs font-semibold text-blue-700 underline">
+                      Ripristina gli articoli rimossi ({excludedBulkArticleIndices.length})
+                    </button>
+                  )}
+                  {bulkImportCandidates.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-slate-500">
-                      L’anteprima degli articoli apparirà qui dopo aver incollato il testo.
+                      {bulkImportPreview.articles.length ? 'Tutti gli articoli sono stati rimossi dall’anteprima.' : 'L’anteprima degli articoli apparirà qui dopo aver incollato il testo.'}
                     </div>
                   ) : (
-                    <div className="max-h-[68dvh] space-y-2 overflow-y-auto pr-1 lg:max-h-[72dvh]">
-                      {parseBulkArticles(bulkImportText).articles.map((article, index) => (
-                        <div key={index} className="rounded-lg border border-slate-200 p-3">
+                    <div className="max-h-[76dvh] space-y-2 overflow-y-auto pr-1 lg:max-h-[80dvh]">
+                      {bulkImportCandidates.map(({ article, sourceIndex }, index) => (
+                        <div key={sourceIndex} className="rounded-lg border border-slate-200 p-3">
                           <div className="flex items-start gap-2">
                             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 font-bold">{index + 1}</span>
-                            <div className="min-w-0">
-                              <h5 className="font-bold text-slate-800">{article.title}</h5>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <h5 className="min-w-0 flex-1 break-words font-bold text-slate-800">{article.title}</h5>
+                                <button type="button" onClick={() => setBulkArticleIncluded(sourceIndex, false)} aria-label={`Rimuovi ${article.title} dall’anteprima`} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50">
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Rimuovi
+                                </button>
+                              </div>
                               {article.tags.length > 0 && <p className="mt-1 text-[10px] text-slate-500">Tag: {article.tags.join(', ')}</p>}
                               <p className="mt-2 whitespace-pre-line text-slate-600">{article.content.length > 280 ? `${article.content.slice(0, 280)}…` : article.content}</p>
                             </div>
@@ -2735,10 +2751,10 @@ export default function FitaTaekwondoApp() {
                       <h4 className="font-bold text-amber-950">Possibili articoli duplicati</h4>
                       <p className="mt-1 text-[11px] text-amber-900">Confronta i titoli simili e deseleziona quelli che non vuoi importare. Gli altri articoli restano selezionati.</p>
                     </div>
-                    {bulkImportReviewItems.map((item, index) => (
-                      <label key={index} className="block rounded-lg border border-amber-200 bg-white p-3">
+                    {bulkImportReviewItems.map(item => (
+                      <label key={item.sourceIndex} className="block rounded-lg border border-amber-200 bg-white p-3">
                         <span className="flex items-start gap-2">
-                          <input type="checkbox" checked={item.include} onChange={() => toggleBulkReviewItem(index)} className="mt-0.5 h-4 w-4 accent-emerald-700" />
+                          <input type="checkbox" checked={!excludedBulkArticleIndices.includes(item.sourceIndex)} onChange={event => setBulkArticleIncluded(item.sourceIndex, event.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-700" />
                           <span className="min-w-0">
                             <span className="block font-bold text-slate-800">{item.article.title}</span>
                             {item.matches.length > 0 ? item.matches.map((match, matchIndex) => (
@@ -2759,10 +2775,10 @@ export default function FitaTaekwondoApp() {
                 <button type="button" onClick={() => setIsQuickImportModalOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 font-bold">Annulla</button>
                 <button
                   type="submit"
-                  disabled={!bulkImportText.trim() || parseBulkArticles(bulkImportText).articles.length === 0 || parseBulkArticles(bulkImportText).errors.length > 0 || (!!bulkImportReviewItems && !bulkImportReviewItems.some(item => item.include))}
+                  disabled={!bulkImportText.trim() || bulkImportCandidates.length === 0 || bulkImportPreview.errors.length > 0}
                   className="px-4 py-2 rounded-lg bg-emerald-700 text-white font-bold hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {bulkImportReviewItems ? `Importa ${bulkImportReviewItems.filter(item => item.include).length} selezionati` : `Verifica e importa ${parseBulkArticles(bulkImportText).articles.length} articoli`}
+                  {bulkImportReviewItems ? `Importa ${bulkImportCandidates.length} selezionati` : `Verifica e importa ${bulkImportCandidates.length} articoli`}
                 </button>
               </form>
             </div>
