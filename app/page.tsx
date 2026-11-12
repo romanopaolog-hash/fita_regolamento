@@ -1962,12 +1962,12 @@ export default function FitaTaekwondoApp() {
                       type="button"
                       onClick={() => setAdminMode(mode => !mode)}
                       aria-pressed={adminMode}
-                      className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition-colors ${adminMode ? 'border-amber-400/60 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20' : 'border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
+                      className={`rounded-md border px-3 py-1.5 text-[11px] font-bold transition-colors ${adminMode ? 'border-violet-400 bg-violet-700 text-white hover:bg-violet-800' : 'border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
                     >
                       Modalità {adminMode ? 'admin' : 'utente'}
                     </button>
                   )}
-                  <button onClick={openProfilePage} className="inline-flex items-center gap-2 rounded-full border border-slate-500 bg-white/10 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/20">
+                  <button onClick={openProfilePage} className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-white/10 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/20">
                     <Settings className="w-3.5 h-3.5 text-amber-400" />
                     <span>Area riservata · {formatPersonName([user.firstName, user.lastName].filter(Boolean).join(' ')) || 'Profilo'}</span>
                   </button>
@@ -2001,7 +2001,7 @@ export default function FitaTaekwondoApp() {
             </div>
 
             {isAccountAdmin && (
-              <button type="button" onClick={() => setAdminMode(mode => !mode)} aria-label={adminMode ? 'Passa alla modalità utente' : 'Torna alla modalità admin'} className={`min-h-11 rounded-lg border px-2.5 text-xs font-bold md:hidden ${adminMode ? 'border-amber-300 bg-amber-100 text-amber-950' : 'border-blue-300 bg-blue-100 text-blue-950'}`}>
+              <button type="button" onClick={() => setAdminMode(mode => !mode)} aria-label={adminMode ? 'Passa alla modalità utente' : 'Torna alla modalità admin'} className={`min-h-11 rounded-md border px-2.5 text-xs font-bold transition-colors md:hidden ${adminMode ? 'border-violet-400 bg-violet-700 text-white hover:bg-violet-800' : 'border-blue-300 bg-blue-100 text-blue-950'}`}>
                 Modalità {adminMode ? 'admin' : 'utente'} <span aria-hidden="true">⇄</span>
               </button>
             )}
