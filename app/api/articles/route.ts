@@ -2,6 +2,7 @@ import { BlobPreconditionFailedError, head, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from '../../../lib/account-approval';
 
+import { hasSectionTab, SECTION_TAB_TYPES, type SectionTab } from '../../../lib/section-tabs';
 import { isDemoArticle } from '../../../lib/demo-articles';
 import { ARTICLES_PATH, readArticles, type ArticleSection } from '../../../lib/article-archive';
 
@@ -14,12 +15,27 @@ function removeDemoArticles(sections: ArticleSection[]): ArticleSection[] {
 
 const MAX_BODY_SIZE = 2_000_000;
 
+function isValidSectionTabs(value: unknown): value is SectionTab[] | undefined {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  const ids = new Set<string>();
+  return value.every(tab => {
+    if (!tab || typeof tab.id !== 'string' || !tab.id || ids.has(tab.id)
+      || !Object.hasOwn(SECTION_TAB_TYPES, tab.kind)
+      || typeof tab.title !== 'string' || !tab.title.trim() || tab.title.length > 80
+      || (tab.archived !== undefined && typeof tab.archived !== 'boolean')) return false;
+    ids.add(tab.id);
+    return true;
+  });
+}
+
 function isValidSections(value: unknown): value is ArticleSection[] {
   if (!Array.isArray(value) || value.length > 100) return false;
   return value.every(section =>
     section !== null
     && typeof section === 'object'
     && typeof section.id === 'string'
+    && isValidSectionTabs(section.sectionTabs)
     && Array.isArray(section.subsections)
     && section.subsections.length <= 5000
     && section.subsections.every((article: unknown) =>
@@ -57,7 +73,13 @@ export async function GET() {
           const { id, title, shortTitle, subtitle, code } = section;
           return { id, title, shortTitle, subtitle, code, hidden: true, subsections: [], documents: [], showcaseVideos: [] };
         }
-        return { ...section, subsections: section.subsections.filter(article => article.hidden !== true) };
+        return {
+          ...section,
+          sectionTabs: section.sectionTabs?.filter(tab => !tab.archived),
+          subsections: section.subsections.filter(article => article.hidden !== true && hasSectionTab(section, 'rules', article)),
+          documents: section.documents?.filter(document => hasSectionTab(section, 'materials', document)),
+          showcaseVideos: section.showcaseVideos?.filter(video => hasSectionTab(section, 'showcase', video)),
+        };
       });
 
     return Response.json({ sections: visibleSections, etag }, { headers: noStoreHeaders() });
