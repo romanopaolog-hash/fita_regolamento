@@ -1,4 +1,5 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
+import { getAccountRegion } from '../../../../lib/account-preferences';
 
 const noStore = { 'Cache-Control': 'no-store, max-age=0' };
 const PAGE_SIZE = 50;
@@ -43,7 +44,6 @@ async function countAdmins(clerk: Awaited<ReturnType<typeof clerkClient>>) {
 }
 
 function publicUser(user: Awaited<ReturnType<Awaited<ReturnType<typeof clerkClient>>['users']['getUser']>>) {
-  const savedRegion = user.unsafeMetadata.region;
   return {
     id: user.id,
     name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Utente',
@@ -52,7 +52,7 @@ function publicUser(user: Awaited<ReturnType<Awaited<ReturnType<typeof clerkClie
       ?? 'Email non disponibile',
     role: user.publicMetadata.role === 'admin' ? 'admin' : 'user',
     createdAt: user.createdAt,
-    region: typeof savedRegion === 'string' ? savedRegion.trim() || null : null,
+    region: getAccountRegion(user.unsafeMetadata.region) || null,
   };
 }
 
@@ -65,7 +65,9 @@ export async function GET(request: Request) {
   }
   if ('response' in access) return access.response;
 
-  const rawOffset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
+  const params = new URL(request.url).searchParams;
+  const sort = params.get('sort');
+  const rawOffset = Number(params.get('offset') ?? 0);
   const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
 
   try {
@@ -77,11 +79,15 @@ export async function GET(request: Request) {
       if (page.data.length < 100) break;
       cursor += page.data.length;
     }
-    const users = allUsers
-      .map(publicUser)
-      .sort((a, b) => Number(b.role === 'admin') - Number(a.role === 'admin')
-        || a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
-        || a.email.localeCompare(b.email, 'it', { sensitivity: 'base' }));
+    const compare = new Intl.Collator('it', { sensitivity: 'base' }).compare;
+    const users = allUsers.map(publicUser).sort((a, b) => {
+      if (sort === 'registered' && a.createdAt !== b.createdAt) return b.createdAt - a.createdAt;
+      if (sort === 'region') {
+        const regionOrder = Number(!a.region) - Number(!b.region) || compare(a.region ?? '', b.region ?? '');
+        if (regionOrder !== 0) return regionOrder;
+      }
+      return compare(a.name, b.name) || compare(a.email, b.email) || compare(a.id, b.id);
+    });
     return Response.json({
       users: users.slice(offset, offset + PAGE_SIZE),
       nextOffset: offset + PAGE_SIZE < users.length ? offset + PAGE_SIZE : null,

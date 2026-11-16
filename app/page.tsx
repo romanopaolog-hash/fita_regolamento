@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 
 import { RegistrationForm, authAppearance } from './registration-form';
+import { getAccountRegion, wantsPortalNotifications } from '../lib/account-preferences';
 import { formatPersonName } from '../lib/format-person-name';
 
 import { isDemoArticle } from '../lib/demo-articles';
@@ -891,7 +892,7 @@ export default function FitaTaekwondoApp() {
     }
 
     const email = clerkUser.primaryEmailAddress?.emailAddress || clerkUser.emailAddresses[0]?.emailAddress || '';
-    const region = typeof clerkUser.unsafeMetadata?.region === 'string' ? clerkUser.unsafeMetadata.region : 'Campania';
+    const region = getAccountRegion(clerkUser.unsafeMetadata?.region);
     setUser({
       id: clerkUser.id,
       firstName: clerkUser.firstName || '',
@@ -923,12 +924,13 @@ export default function FitaTaekwondoApp() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const canReadNotifications = Boolean(clerkUser && getAccountApprovalStatus(clerkUser) === 'approved');
+  const canReadNotifications = Boolean(clerkUser && getAccountApprovalStatus(clerkUser) === 'approved' && wantsPortalNotifications(clerkUser));
   const noticeStorageKey = clerkUser ? `tkd_notice_seen_${clerkUser.id}` : '';
 
   useEffect(() => {
     setNotificationSeenAt(0);
     setNotificationItems([]);
+    setDevicePushEnabled(false);
     setDismissedNoticeIds([]);
     setPushStatus('');
     try {
@@ -1014,7 +1016,7 @@ export default function FitaTaekwondoApp() {
   }, [canReadNotifications, noticeStorageKey, notificationsOpen]);
 
   const toggleDevicePush = async () => {
-    if (pushBusy) return;
+    if (!canReadNotifications || pushBusy) return;
     if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window)) {
       setPushStatus('Se usi iPhone o iPad, aggiungi il sito alla schermata Home e aprilo dall’icona. Sugli altri dispositivi usa un browser con supporto Web Push.');
       return;
@@ -2189,7 +2191,7 @@ export default function FitaTaekwondoApp() {
               </div>
 
 
-              <div className="relative shrink-0">
+              {canReadNotifications && <div className="relative shrink-0">
                 <button type="button" onClick={() => setNotificationsOpen(open => !open)} aria-label={`Notifiche${unreadNotices ? `, ${unreadNotices} da leggere` : ''}`} aria-expanded={notificationsOpen} className="relative flex h-11 w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-[#0B1B3D] hover:bg-slate-100">
                   <Bell className="h-5 w-5" aria-hidden="true" />
                   {unreadNotices > 0 && <span aria-hidden="true" className="absolute right-0 top-0 rounded-full bg-[#A60F2D] px-1.5 text-[10px] font-bold text-white">{unreadNotices}</span>}
@@ -2221,7 +2223,7 @@ export default function FitaTaekwondoApp() {
                     </ul> : <p className="py-3 text-sm text-slate-600">Non ci sono notifiche.</p>}
                   </section>
                 )}
-              </div>
+              </div>}
               <InstallAppButton />
             </div>
           </div>
