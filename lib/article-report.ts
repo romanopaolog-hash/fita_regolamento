@@ -6,6 +6,7 @@ export type ArticleReport = {
   articleTitle: string;
   sectionTitle: string;
   authorName: string;
+  authorUserId?: string;
   kind: 'errore' | 'suggerimento';
   message: string;
   createdAt: number;

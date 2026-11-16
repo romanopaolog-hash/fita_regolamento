@@ -1,4 +1,5 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
+import { purgeAccountData } from '../../../../lib/account-data';
 import { getAccountRegion } from '../../../../lib/account-preferences';
 
 const noStore = { 'Cache-Control': 'no-store, max-age=0' };
@@ -24,7 +25,7 @@ async function requireAdmin() {
 
   const clerk = await clerkClient();
   const currentUser = await clerk.users.getUser(userId);
-  if (currentUser.publicMetadata.role !== 'admin') {
+  if (currentUser.banned || currentUser.publicMetadata.role !== 'admin') {
     return { response: Response.json({ error: 'Permessi admin richiesti.' }, { status: 403, headers: noStore }) };
   }
 
@@ -37,7 +38,7 @@ async function countAdmins(clerk: Awaited<ReturnType<typeof clerkClient>>) {
 
   while (true) {
     const page = await clerk.users.getUserList({ limit: 100, offset });
-    count += page.data.filter(user => user.publicMetadata.role === 'admin').length;
+    count += page.data.filter(user => !user.banned && user.publicMetadata.role === 'admin').length;
     if (page.data.length < 100) return count;
     offset += page.data.length;
   }
@@ -157,11 +158,23 @@ export async function DELETE(request: Request) {
     }
 
     const target = await access.clerk.users.getUser(body.userId);
-    if (target.publicMetadata.role === 'admin' && await countAdmins(access.clerk) <= 1) {
+    if (!target.banned && target.publicMetadata.role === 'admin' && await countAdmins(access.clerk) <= 1) {
       return Response.json({ error: 'Deve rimanere almeno un admin.' }, { status: 409, headers: noStore });
     }
 
-    await access.clerk.users.deleteUser(body.userId);
+    // Clerk revokes existing sessions when a user is banned.
+    if (!target.banned) await access.clerk.users.banUser(body.userId);
+    try {
+      await purgeAccountData(body.userId);
+      await access.clerk.users.deleteUser(body.userId);
+    } catch (error) {
+      console.error('[admin-users] Account deletion incomplete', error);
+      return Response.json(
+        { error: 'Accesso bloccato. L’eliminazione non è ancora completa: riprova da Gestione utenti.' },
+        { status: 503, headers: noStore },
+      );
+    }
+
     return Response.json({ deletedUserId: body.userId }, { headers: noStore });
   } catch {
     return Response.json({ error: 'Impossibile eliminare l’utente.' }, { status: 503, headers: noStore });

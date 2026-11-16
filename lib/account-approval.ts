@@ -5,10 +5,12 @@ export const APPROVAL_REQUIRED_AFTER = Date.parse('2026-11-09T10:42:28.000Z');
 
 type ApprovalUser = {
   createdAt: number | Date | null;
+  banned?: boolean;
   publicMetadata?: Record<string, unknown>;
 };
 
 export function getAccountApprovalStatus(user: ApprovalUser): AccountApprovalStatus {
+  if (user.banned) return 'rejected';
   const metadata = user.publicMetadata ?? {};
   const createdAt = user.createdAt instanceof Date
     ? user.createdAt.getTime()

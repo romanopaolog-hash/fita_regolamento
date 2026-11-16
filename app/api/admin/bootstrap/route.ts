@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       email => email.id === currentUser.primaryEmailAddressId && email.verification?.status === 'verified',
     );
 
-    if (!verifiedEmail || verifiedEmail.emailAddress.trim().toLowerCase() !== adminEmail) {
+    if (currentUser.banned || !verifiedEmail || verifiedEmail.emailAddress.trim().toLowerCase() !== adminEmail) {
       return Response.json({ error: 'Non autorizzato.' }, { status: 403, headers: noStore });
     }
 

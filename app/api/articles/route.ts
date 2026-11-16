@@ -113,7 +113,7 @@ export async function PUT(request: Request) {
   try {
     const clerk = await clerkClient();
     const admin = await clerk.users.getUser(userId);
-    if (admin.publicMetadata.role !== 'admin') {
+    if (admin.publicMetadata.role !== 'admin' || !isAccountApproved(admin)) {
       return Response.json({ error: 'Permessi admin richiesti.' }, { status: 403, headers: noStoreHeaders() });
     }
   } catch {
