@@ -61,7 +61,7 @@ import InstallAppButton from './install-app-button';
 import { ARTICLE_REPORT_MAX_LENGTH } from '../lib/article-report';
 import { uploadArticleMedia } from '../lib/article-media';
 import { getSectionTabs, hasSectionTab, SECTION_TAB_TYPES, type SectionTab, type SectionTabKind } from '../lib/section-tabs';
-import { getInstagramEmbedUrl, PlayVideoButton, VideoDialog } from './video-dialog';
+import { getInstagramEmbedUrl, InstagramPlayer, PlayVideoButton, VideoDialog } from './video-dialog';
 
 type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
 
@@ -2643,19 +2643,24 @@ export default function FitaTaekwondoApp() {
                                     <Video className="w-3.5 h-3.5 text-[#A60F2D]" /> Media ed Esempi
                                   </h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {sub.media.map((item, mIdx) => (
-                                      <div key={mIdx} className="flex justify-center bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
-                                        {item.type === 'document' ? (
-                                          <a href={item.url} className="flex min-h-11 items-center gap-2 px-2 text-sm font-semibold text-blue-700">
-                                            <Download className="h-4 w-4 shrink-0" /> {item.caption?.replace(/^File: /, '') || 'Scarica documento'}
-                                          </a>
-                                        ) : item.type === 'image' && !getInstagramEmbedUrl(item.url) ? (
-                                          <img src={item.url} alt={item.caption || 'Media'} className="block h-auto max-h-[70vh] w-auto max-w-full object-contain" />
-                                        ) : (
-                                          <PlayVideoButton title={sub.title} onClick={() => setActiveVideoModal({ url: item.url, title: sub.title })} />
-                                        )}
-                                      </div>
-                                    ))}
+                                    {sub.media.map((item, mIdx) => {
+                                      const instagram = getInstagramEmbedUrl(item.url);
+                                      return (
+                                        <div key={mIdx} className="flex justify-center rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+                                          {item.type === 'document' ? (
+                                            <a href={item.url} className="flex min-h-11 items-center gap-2 px-2 text-sm font-semibold text-blue-700">
+                                              <Download className="h-4 w-4 shrink-0" /> {item.caption?.replace(/^File: /, '') || 'Scarica documento'}
+                                            </a>
+                                          ) : instagram ? (
+                                            <InstagramPlayer key={instagram} embedUrl={instagram} title={sub.title} />
+                                          ) : item.type === 'image' ? (
+                                            <img src={item.url} alt={item.caption || 'Media'} className="block h-auto max-h-[70vh] w-auto max-w-full object-contain" />
+                                          ) : (
+                                            <PlayVideoButton title={sub.title} onClick={() => setActiveVideoModal({ url: item.url, title: sub.title })} />
+                                          )}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -2709,18 +2714,22 @@ export default function FitaTaekwondoApp() {
                         } catch {}
                         return (
                           <article key={video.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                            <div
-                              className={isPortraitEmbed ? "mx-auto overflow-hidden bg-slate-950" : "aspect-video bg-slate-950"}
-                              style={isPortraitEmbed ? { width: 'min(100%, 380px, 42.1875vh)', aspectRatio: '9 / 16' } : undefined}
-                            >
-                              {instagram ? (
-                                <PlayVideoButton title={video.title} onClick={() => setActiveVideoModal({ url: video.url, title: video.title })} />
-                              ) : embedUrl ? (
-                                <iframe src={embedUrl} title={video.title} className="h-full w-full border-0" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen />
-                              ) : (
-                                <video src={video.url} controls playsInline preload="metadata" className="h-full w-full object-contain" />
-                              )}
-                            </div>
+                            {instagram ? (
+                              <div className="px-3 pt-2">
+                                <InstagramPlayer key={instagram} embedUrl={instagram} title={video.title} />
+                              </div>
+                            ) : (
+                              <div
+                                className={isPortraitEmbed ? 'mx-auto overflow-hidden bg-slate-950' : 'aspect-video bg-slate-950'}
+                                style={isPortraitEmbed ? { width: 'min(100%, 380px, 42.1875vh)', aspectRatio: '9 / 16' } : undefined}
+                              >
+                                {embedUrl ? (
+                                  <iframe src={embedUrl} title={video.title} className="h-full w-full border-0" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen />
+                                ) : (
+                                  <video src={video.url} controls playsInline preload="metadata" className="h-full w-full object-contain" />
+                                )}
+                              </div>
+                            )}
                             <div className="flex flex-wrap items-start justify-between gap-3 p-4">
                               <div className="min-w-0 break-words">
                                 <h4 className="text-sm font-bold text-[#0B1B3D]">{video.title}</h4>
@@ -3605,7 +3614,6 @@ export default function FitaTaekwondoApp() {
           title={activeVideoModal.title}
           url={activeVideoModal.url}
           embedUrl={getShowcaseEmbedUrl(activeVideoModal.url)}
-          instagram={Boolean(getInstagramEmbedUrl(activeVideoModal.url))}
           onClose={() => setActiveVideoModal(null)}
         />
       )}

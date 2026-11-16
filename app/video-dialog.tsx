@@ -13,18 +13,61 @@ export function getInstagramEmbedUrl(rawUrl: string) {
   }
 }
 
+export function InstagramPlayer({ embedUrl, title }: { embedUrl: string; title: string }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState<number>();
+  const [replayCount, setReplayCount] = useState(0);
+
+  useEffect(() => {
+    function adjustHeight(event: MessageEvent) {
+      if (event.origin !== 'https://www.instagram.com' || event.source !== frame.current?.contentWindow) return;
+
+      let message = event.data;
+      if (typeof message === 'string') {
+        try { message = JSON.parse(message); } catch { return; }
+      }
+      const measured = message?.details?.height;
+      if (message?.type === 'MEASURE' && typeof measured === 'number' && measured >= 100 && measured <= 4000) {
+        setHeight(Math.ceil(measured));
+      }
+    }
+
+    window.addEventListener('message', adjustHeight);
+    return () => window.removeEventListener('message', adjustHeight);
+  }, []);
+
+  return (
+    <div className="mx-auto w-full max-w-[380px]">
+      <iframe
+        ref={frame}
+        key={replayCount}
+        src={embedUrl}
+        title={`Instagram · ${title}`}
+        loading="lazy"
+        scrolling="no"
+        sandbox="allow-scripts allow-same-origin allow-presentation"
+        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+        allowFullScreen
+        style={{ height }}
+        className="block aspect-[9/19] w-full border-0"
+      />
+      <button type="button" onClick={() => setReplayCount(count => count + 1)} className="inline-flex min-h-10 items-center gap-1.5 px-2 text-xs font-semibold text-blue-700 hover:underline">
+        <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" /> Rivedi dall’inizio
+      </button>
+    </div>
+  );
+}
+
 export function VideoDialog({
-  title, embedUrl, instagram, url, onClose,
+  title, embedUrl, url, onClose,
 }: {
   title: string;
   embedUrl: string | null;
-  instagram: boolean;
   url: string;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const [replayCount, setReplayCount] = useState(0);
 
   useEffect(() => {
     const element = dialog.current;
@@ -51,20 +94,11 @@ export function VideoDialog({
           <X className="h-5 w-5" />
         </button>
       </header>
-      {instagram && (
-        <div className="flex justify-center p-2">
-          <button type="button" onClick={() => setReplayCount(count => count + 1)} className="inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-semibold text-blue-700">
-            <RotateCcw className="h-4 w-4" /> Rivedi dall’inizio
-          </button>
-        </div>
-      )}
-      <div className={instagram ? 'mx-auto h-[min(65dvh,640px)] w-full max-w-[450px] bg-slate-950' : 'aspect-video bg-black'}>
+      <div className="aspect-video bg-black">
         {embedUrl ? (
           <iframe
-            key={replayCount}
             src={embedUrl}
             title={title}
-            sandbox={instagram ? 'allow-scripts allow-same-origin allow-presentation' : undefined}
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
             allowFullScreen
             className="h-full w-full border-0"
