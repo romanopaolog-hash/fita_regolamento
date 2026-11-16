@@ -35,6 +35,7 @@ import {
   CheckCircle,
   CheckSquare,
   Images,
+  FolderOpen,
   Square,
   ShieldCheck,
   Eye,
@@ -3101,8 +3102,13 @@ export default function FitaTaekwondoApp() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <label className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 focus-within:ring-2 focus-within:ring-blue-500 has-[:disabled]:opacity-50">
-                          Scegli dalla galleria o dai file
+                          Scegli dalla galleria
                           <input type="file" accept="image/*,video/*,.mov,.mp4,.webm,.m4v" disabled={isUploadingArticleMedia} onChange={handleFileUpload} className="sr-only" />
+                        </label>
+                        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 focus-within:ring-2 focus-within:ring-blue-500 has-[:disabled]:opacity-50">
+                          <FolderOpen aria-hidden="true" className="h-4 w-4" />
+                          Sfoglia foto e video nei file
+                          <input type="file" disabled={isUploadingArticleMedia} onChange={handleFileUpload} className="sr-only" />
                         </label>
                         <label className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 focus-within:ring-2 focus-within:ring-blue-500 has-[:disabled]:opacity-50">
                           Scegli documento
@@ -3451,13 +3457,18 @@ export default function FitaTaekwondoApp() {
                   </label>
                 ) : (
                   <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50 p-3">
-                    <label className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 text-center text-sm font-bold text-white transition-colors hover:bg-violet-800 focus-within:ring-2 focus-within:ring-violet-500 focus-within:ring-offset-2">
-                      <Upload aria-hidden="true" className="h-4 w-4 shrink-0" />
-                      {showcaseUrl.startsWith('/api/articles/media?') ? 'Sostituisci video' : 'Scegli dalla galleria o dai file'}
+                    <label className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 text-center text-sm font-bold text-white transition-colors hover:bg-violet-800 focus-within:ring-2 focus-within:ring-violet-500 focus-within:ring-offset-2 has-[:disabled]:opacity-50">
+                      <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0" />
+                      Sfoglia file
+                      <input type="file" onChange={handleShowcaseFile} className="sr-only" />
+                    </label>
+                    <label className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-violet-300 bg-white px-3 text-center text-sm font-bold text-violet-800 hover:bg-violet-50 focus-within:ring-2 focus-within:ring-violet-500 focus-within:ring-offset-2 has-[:disabled]:opacity-50">
+                      <Images aria-hidden="true" className="h-4 w-4 shrink-0" />
+                      Scegli dalla galleria
                       <input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={handleShowcaseFile} className="sr-only" />
                     </label>
                     {showcaseUrl.startsWith('/api/articles/media?') && <p className="flex items-center gap-1.5 break-all text-xs font-semibold text-violet-800"><CheckCircle className="h-4 w-4 shrink-0" /> {showcaseFileName || 'Video caricato'}</p>}
-                    <p className="text-xs text-slate-600">Fino a 100 MB. Consenti l’accesso alla galleria se richiesto dal telefono.</p>
+                    <p className="text-xs text-slate-600">Se il telefono propone Google Foto, usa «Sfoglia file» e cerca il video nella memoria interna. I filmati della fotocamera si trovano di solito in DCIM/Camera. Video fino a 100 MB.</p>
                   </div>
                 )}
               </fieldset>
