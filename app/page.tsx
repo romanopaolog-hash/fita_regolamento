@@ -1263,6 +1263,12 @@ export default function FitaTaekwondoApp() {
     showToast('Notizia eliminata.');
   };
 
+  const selectSectionTab = (id: string) => {
+    setSelectedTabId(id);
+    setSelectedArticleIds([]);
+    setIsSelectingArticles(false);
+  };
+
   const saveTab = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isAccountAdmin || !adminMode || !managedSection || !tabDraft) return;
@@ -1280,7 +1286,7 @@ export default function FitaTaekwondoApp() {
           : [...tabs, tab],
       };
     }));
-    if (!tabDraft.id) setSelectedTabId(id);
+    if (!tabDraft.id) selectSectionTab(id);
     setTabDraft(null);
   };
 
@@ -1291,7 +1297,8 @@ export default function FitaTaekwondoApp() {
       : section
     ));
     if (tabDraft?.id === tab.id) setTabDraft(null);
-    if (!archived) setSelectedTabId(tab.id);
+    if (!archived) selectSectionTab(tab.id);
+    else if (activeTab?.id === tab.id) selectSectionTab(getSectionTabs(managedSection).find(item => item.id !== tab.id && !item.archived)?.id ?? 'rules');
     showToast(archived ? 'Sottosezione rimossa.' : 'Sottosezione ripristinata.');
   };
 
@@ -1651,7 +1658,7 @@ export default function FitaTaekwondoApp() {
     const article = target?.subsections.find(item => item.id === articleId);
     if (!target || !article) return;
     setActiveSectionId(target.id);
-    setSelectedTabId(article.tabId ?? 'rules');
+    selectSectionTab(article.tabId ?? 'rules');
     setOpenAccordions(previous => ({ ...previous, [articleId]: true }));
     window.setTimeout(() => document.getElementById(`article-${articleId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
   };
@@ -1789,7 +1796,7 @@ export default function FitaTaekwondoApp() {
       section.id === bulkImportSectionId ? { ...section, subsections: [...section.subsections, ...importedSubsections] } : section
     ));
     setActiveSectionId(bulkImportSectionId);
-    setSelectedTabId(bulkImportTabId);
+    selectSectionTab(bulkImportTabId);
     setIsQuickImportModalOpen(false);
     setBulkImportText('');
     setExcludedBulkArticleIndices([]);
@@ -1885,7 +1892,7 @@ export default function FitaTaekwondoApp() {
     }));
     setSelectedArticleIds(prev => prev.filter(id => id !== movingArticle.id));
     setActiveSectionId(moveTargetSectionId);
-    setSelectedTabId(targetTab.id);
+    selectSectionTab(targetTab.id);
     setOpenAccordions(prev => ({ ...prev, [movingArticle.id]: true }));
     setMovingArticle(null);
     showToast(`Articolo spostato in “${targetSection.title}”.`);
@@ -2159,7 +2166,7 @@ export default function FitaTaekwondoApp() {
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
                           setActiveSectionId(section.id);
-                          setSelectedTabId('rules');
+                          selectSectionTab('rules');
                           setSearchQuery(sub.title);
                           setOpenAccordions(prev => ({ ...prev, [sub.id]: true }));
                           setIsArticleSearchFocused(false);
@@ -2246,7 +2253,7 @@ export default function FitaTaekwondoApp() {
               {displayedSections.map((sec) => (
                 <button
                   key={sec.id}
-                  onClick={() => { setActiveSectionId(sec.id); setSelectedTabId('rules'); }}
+                  onClick={() => { setActiveSectionId(sec.id); selectSectionTab('rules'); }}
                   className={`py-2.5 px-3 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
                     activeSectionId === sec.id ? 'bg-[#0B1B3D] text-white border-[#0B1B3D] shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                   }`}
@@ -2409,11 +2416,7 @@ export default function FitaTaekwondoApp() {
                           key={tab.id}
                           type="button"
                           aria-current={tab.id === activeTab?.id ? 'true' : undefined}
-                          onClick={() => {
-                            setSelectedTabId(tab.id);
-                            setSelectedArticleIds([]);
-                            setIsSelectingArticles(false);
-                          }}
+                          onClick={() => selectSectionTab(tab.id)}
                           className={`flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-center text-xs font-bold transition-colors sm:min-h-8 sm:flex-none ${tab.id === activeTab?.id ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
                         >
                           <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -3222,7 +3225,7 @@ export default function FitaTaekwondoApp() {
               type="button"
               aria-label={sec.title}
               title={sec.title}
-              onClick={() => { setActiveSectionId(sec.id); setSelectedTabId('rules'); }}
+              onClick={() => { setActiveSectionId(sec.id); selectSectionTab('rules'); }}
               className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg min-h-12 py-1 transition-colors ${
                 activeSectionId === sec.id ? 'text-amber-400 font-bold' : 'text-slate-300'
               }`}
