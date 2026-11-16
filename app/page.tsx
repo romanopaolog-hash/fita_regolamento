@@ -56,6 +56,8 @@ function getArticleSubtitle(article: { description?: string }) {
 
 import InstallAppButton from './install-app-button';
 import { ARTICLE_REPORT_MAX_LENGTH } from '../lib/article-report';
+import { uploadArticleMedia } from '../lib/article-media';
+import { getInstagramEmbedUrl, PlayVideoButton, VideoDialog } from './video-dialog';
 
 type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
 
@@ -164,10 +166,7 @@ function getShowcaseEmbedUrl(rawUrl: string): string | null {
       const videoId = url.pathname.match(/\/(\d+)/)?.[1];
       return videoId ? `https://player.vimeo.com/video/${videoId}` : null;
     }
-    if (host === 'instagram.com' || host.endsWith('.instagram.com')) {
-      const post = url.pathname.match(/^\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/);
-      return post ? `https://www.instagram.com/${url.pathname.split('/')[1]}/${post[1]}/embed` : null;
-    }
+    if (host === 'instagram.com' || host.endsWith('.instagram.com')) return getInstagramEmbedUrl(rawUrl);
     if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
       const videoId = url.pathname.match(/\/video\/(\d+)/)?.[1];
       return videoId ? `https://www.tiktok.com/player/v1/${videoId}?description=1&music_info=1` : null;
@@ -579,15 +578,18 @@ export default function FitaTaekwondoApp() {
   const [approvalRequestBusyId, setApprovalRequestBusyId] = useState<string | null>(null);
 
 
-  const [activeVideoModal, setActiveVideoModal] = useState<{ url: string; caption: string; title: string } | null>(null);
+  const [activeVideoModal, setActiveVideoModal] = useState<{ url: string; title: string } | null>(null);
   const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [showcaseFormSectionId, setShowcaseFormSectionId] = useState<string | null>(null);
-  const [sectionRename, setSectionRename] = useState<{ sectionId: string; group?: string; name: string } | null>(null);
+  const [sectionRename, setSectionRename] = useState<{ sectionId: string; articleId?: string; group?: string; name: string } | null>(null);
   const [editingShowcaseVideoId, setEditingShowcaseVideoId] = useState<string | null>(null);
   const [showcaseTitle, setShowcaseTitle] = useState('');
   const [showcaseUrl, setShowcaseUrl] = useState('');
+  const [showcaseSource, setShowcaseSource] = useState<'url' | 'file'>('url');
+  const [showcaseFileName, setShowcaseFileName] = useState('');
+  const [isUploadingShowcaseVideo, setIsUploadingShowcaseVideo] = useState(false);
   const [showcaseComment, setShowcaseComment] = useState('');
   const [showcaseGroup, setShowcaseGroup] = useState('');
   const [movingArticle, setMovingArticle] = useState<{ id: string; title: string; sourceSectionId: string } | null>(null);
@@ -609,9 +611,8 @@ export default function FitaTaekwondoApp() {
   const [formSource, setFormSource] = useState('');
   const [mediaSourceType, setMediaSourceType] = useState<'url' | 'file'>('file');
   const [formMediaUrl, setFormMediaUrl] = useState('');
-  const [formMediaType, setFormMediaType] = useState<'image' | 'video'>('image');
+  const [formMediaType, setFormMediaType] = useState<'image' | 'video' | 'document'>('image');
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
-  const articleMediaInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingArticleMedia, setIsUploadingArticleMedia] = useState(false);
   const [isQuickImportModalOpen, setIsQuickImportModalOpen] = useState(false);
   const [bulkImportText, setBulkImportText] = useState('');
@@ -1098,30 +1099,13 @@ export default function FitaTaekwondoApp() {
   };
 
   const handleArticleMediaFile = async (file: File) => {
-    if (!(file.type.startsWith('image/') || file.type.startsWith('video/'))) {
-      showToast('Seleziona un’immagine o un video.');
-      return;
-    }
-    if (file.size > 4 * 1024 * 1024) {
-      showToast('Il file supera il limite di 4 MB.');
-      return;
-    }
+    if (!isAccountAdmin || !adminMode || isUploadingArticleMedia) return;
     setIsUploadingArticleMedia(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file, file.name || (file.type.startsWith('video/') ? 'video-caricato' : 'immagine-incollata.png'));
-      const response = await fetch('/api/articles/media', {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: formData,
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || typeof result?.url !== 'string') {
-        throw new Error(result?.error || 'Impossibile caricare il file.');
-      }
-      setSelectedFileName(file.name || (file.type.startsWith('video/') ? 'Video caricato' : 'Immagine incollata'));
-      setFormMediaUrl(result.url);
-      setFormMediaType(file.type.startsWith('video/') ? 'video' : 'image');
+      const { url, type } = await uploadArticleMedia(file);
+      setSelectedFileName(file.name || 'Immagine incollata');
+      setFormMediaUrl(url);
+      setFormMediaType(type);
       setMediaSourceType('file');
       showToast('File caricato. Salva l’articolo per condividerlo.');
     } catch (error) {
@@ -1149,11 +1133,39 @@ export default function FitaTaekwondoApp() {
     e.currentTarget.value = '';
   };
 
+  const handleArticleDocument = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file || !isAccountAdmin || !adminMode || isUploadingArticleMedia) return;
+    if (!file.size || file.size > 4 * 1024 * 1024) {
+      showToast('Scegli un documento non vuoto fino a 4 MB.');
+      return;
+    }
+
+    setIsUploadingArticleMedia(true);
+    try {
+      const data = new FormData();
+      data.append('file', file);
+      const response = await fetch('/api/documents/media', { method: 'POST', body: data });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || typeof result?.url !== 'string') {
+        throw new Error(result?.error || 'Impossibile caricare il documento.');
+      }
+      setSelectedFileName(file.name);
+      setFormMediaUrl(result.url);
+      setFormMediaType('document');
+      showToast('Documento caricato. Salva l’articolo per condividerlo.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossibile caricare il documento.');
+    } finally {
+      setIsUploadingArticleMedia(false);
+    }
+  };
+
   const handleRemoveArticleMedia = () => {
     setFormMediaUrl('');
     setFormMediaType('image');
     setSelectedFileName(null);
-    if (articleMediaInputRef.current) articleMediaInputRef.current.value = '';
   };
 
   const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1235,25 +1247,48 @@ export default function FitaTaekwondoApp() {
     setEditingShowcaseVideoId(video?.id ?? null);
     setShowcaseTitle(video?.title ?? '');
     setShowcaseUrl(video?.url ?? '');
+    setShowcaseSource(video?.url.startsWith('/api/articles/media?') ? 'file' : 'url');
+    setShowcaseFileName('');
     setShowcaseComment(video?.comment ?? '');
     setShowcaseGroup(video?.group ?? '');
     setShowcaseFormSectionId(sectionId);
   };
 
+  const handleShowcaseFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file || !isAccountAdmin || !adminMode || isUploadingShowcaseVideo) return;
+
+    setIsUploadingShowcaseVideo(true);
+    try {
+      const { url } = await uploadArticleMedia(file, true);
+      setShowcaseUrl(url);
+      setShowcaseFileName(file.name);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossibile caricare il video.');
+    } finally {
+      setIsUploadingShowcaseVideo(false);
+    }
+  };
+
   const handleSaveShowcaseVideo = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || user.role !== 'admin' || !adminMode || !showcaseFormSectionId) return;
+    if (!isAccountAdmin || !adminMode || !showcaseFormSectionId || isUploadingShowcaseVideo) return;
     const title = showcaseTitle.trim();
     const url = showcaseUrl.trim();
-    if (!title || !url) return;
-    let parsedUrl: URL;
-    try { parsedUrl = new URL(url); } catch { showToast('Inserisci un link video valido.'); return; }
-    if (!['https:', 'http:'].includes(parsedUrl.protocol)) { showToast('Inserisci un link video valido.'); return; }
+    if (!title || !url) {
+      showToast('Inserisci un titolo e scegli un video.');
+      return;
+    }
+    if (showcaseSource === 'file' ? !url.startsWith('/api/articles/media?') : !URL.canParse(url) || !/^https?:\/\//i.test(url)) {
+      showToast(showcaseSource === 'file' ? 'Scegli un video dal dispositivo.' : 'Inserisci un link video valido.');
+      return;
+    }
     const editingId = editingShowcaseVideoId;
     const video = {
       id: editingId || 'showcase-' + Date.now(),
       title,
-      url: parsedUrl.toString(),
+      url,
       comment: showcaseComment.trim(),
       group: showcaseGroup.trim(),
       addedAt: new Date().toISOString()
@@ -1282,7 +1317,7 @@ export default function FitaTaekwondoApp() {
     if (!isAccountAdmin || !adminMode || !sectionRename) return;
     const name = sectionRename.name.trim();
     if (!name) return;
-    const { sectionId, group } = sectionRename;
+    const { sectionId, articleId, group } = sectionRename;
     const section = sections.find(item => item.id === sectionId);
     if (!section) return;
 
@@ -1293,6 +1328,12 @@ export default function FitaTaekwondoApp() {
 
     setSections(previous => previous.map(item => {
       if (item.id !== sectionId) return item;
+      if (articleId) {
+        return {
+          ...item,
+          subsections: item.subsections.map(article => article.id === articleId ? { ...article, title: name } : article),
+        };
+      }
       if (group === undefined) return { ...item, title: name, shortTitle: name };
       const videos: ShowcaseVideo[] = (item as any).showcaseVideos || [];
       return {
@@ -1616,7 +1657,9 @@ export default function FitaTaekwondoApp() {
 
   const handleSaveSubsection = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isUploadingArticleMedia || !formTitle.trim() || !formContent.trim()) return;
+    if (!isAccountAdmin || !adminMode || isUploadingArticleMedia || !formTitle.trim() || !formContent.trim()) return;
+    const attachmentUrl = formMediaUrl.trim();
+    const instagram = getInstagramEmbedUrl(attachmentUrl);
     const notify = new FormData(e.currentTarget as HTMLFormElement).has('notifyArticle');
     const newSub = {
       notifiedAt: editingSubsection?.notifiedAt ?? (!editingSubsection && notify ? new Date().toISOString() : undefined),
@@ -1624,12 +1667,21 @@ export default function FitaTaekwondoApp() {
       addedAt: (editingSubsection as any)?.addedAt ?? new Date().toISOString(),
       hidden: (editingSubsection as any)?.hidden ?? false,
       suggested: formSuggested,
-      title: formTitle,
+      title: formTitle.trim(),
       description: formSubtitle.trim(),
       content: formContent,
       source: formSource.trim(),
       tags: formTags.split(',').map(t => t.trim()).filter(Boolean),
-      media: formMediaUrl ? [{ type: formMediaType, url: formMediaUrl, caption: selectedFileName ? `File: ${selectedFileName}` : 'Allegato' }] : []
+      media: [
+        ...(attachmentUrl ? [{
+          type: instagram ? 'video' : formMediaType,
+          url: attachmentUrl,
+          caption: editingSubsection?.media?.[0]?.url === attachmentUrl
+            ? editingSubsection.media[0].caption
+            : selectedFileName ? `File: ${selectedFileName}` : 'Allegato',
+        }] : []),
+        ...(editingSubsection?.media?.slice(1) ?? []),
+      ],
     };
     setSections(prev =>
       prev.map(sec => {
@@ -1711,7 +1763,8 @@ export default function FitaTaekwondoApp() {
     setFormTags(sub.tags ? sub.tags.join(', ') : '');
     setFormSource((sub as any).source ?? '');
     setFormMediaUrl(sub.media && sub.media[0] ? sub.media[0].url : '');
-    setFormMediaType(sub.media && sub.media[0] ? sub.media[0].type : 'image');
+    setFormMediaType(sub.media?.[0]?.type ?? 'image');
+    setMediaSourceType(/^https?:\/\//i.test(sub.media?.[0]?.url ?? '') ? 'url' : 'file');
     const mediaCaption = sub.media?.[0]?.caption || '';
     setSelectedFileName(mediaCaption.startsWith('File:') ? mediaCaption.slice(5).trim() : mediaCaption || null);
     setIsEditingModalOpen(true);
@@ -2343,6 +2396,8 @@ export default function FitaTaekwondoApp() {
                             setEditingSubsection(null);
                             setFormSectionId(currentSection.id);
                             setFormTitle(''); setFormSubtitle(''); setFormSuggested(false); setFormContent(''); setFormTags(''); setFormSource(''); setFormMediaUrl('');
+                            setFormMediaType('image');
+                            setMediaSourceType('file');
                             setSelectedFileName(null);
                             setIsEditingModalOpen(true);
                           }}
@@ -2464,7 +2519,8 @@ export default function FitaTaekwondoApp() {
                                       <ArrowRightLeft className="h-4 w-4" />
                                     </button>
                                   )}
-                                  <button onClick={() => handleEditClick(sub, currentSection.id)} className="p-1 text-blue-600" aria-label={`Modifica ${sub.title}`}>
+                                  <button type="button" onClick={() => setSectionRename({ sectionId: currentSection.id, articleId: sub.id, name: sub.title })} className="rounded p-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-50" aria-label={`Rinomina ${sub.title}`}>Rinomina</button>
+                                  <button type="button" onClick={() => handleEditClick(sub, currentSection.id)} className="p-1 text-blue-600" aria-label={`Modifica ${sub.title}`}>
                                     <Edit3 className="w-3.5 h-3.5" />
                                   </button>
                                   <button onClick={() => handleDeleteSubsection(currentSection.id, sub.id)} className="p-1 text-red-600" aria-label={`Elimina ${sub.title}`}>
@@ -2513,20 +2569,14 @@ export default function FitaTaekwondoApp() {
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {sub.media.map((item, mIdx) => (
                                       <div key={mIdx} className="flex justify-center bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
-                                        {item.type === 'image' ? (
+                                        {item.type === 'document' ? (
+                                          <a href={item.url} className="flex min-h-11 items-center gap-2 px-2 text-sm font-semibold text-blue-700">
+                                            <Download className="h-4 w-4 shrink-0" /> {item.caption?.replace(/^File: /, '') || 'Scarica documento'}
+                                          </a>
+                                        ) : item.type === 'image' && !getInstagramEmbedUrl(item.url) ? (
                                           <img src={item.url} alt={item.caption || 'Media'} className="block h-auto max-h-[70vh] w-auto max-w-full object-contain" />
                                         ) : (
-                                          <div
-                                            onClick={() => setActiveVideoModal({ url: item.url, caption: item.caption || '', title: sub.title })}
-                                            className="aspect-video bg-slate-900 flex items-center justify-center cursor-pointer relative"
-                                          >
-                                            <div className="w-10 h-10 rounded-full bg-[#A60F2D] text-white flex items-center justify-center shadow-lg">
-                                              <Play className="w-4 h-4 fill-white ml-0.5" />
-                                            </div>
-                                            <span className="absolute bottom-2 right-2 text-[9px] bg-black/80 text-white px-1.5 py-0.5 rounded font-bold">
-                                              Video VR
-                                            </span>
-                                          </div>
+                                          <PlayVideoButton title={sub.title} onClick={() => setActiveVideoModal({ url: item.url, title: sub.title })} />
                                         )}
                                       </div>
                                     ))}
@@ -2575,10 +2625,11 @@ export default function FitaTaekwondoApp() {
                             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                               {groupVideos.map((video: any, videoIndex: number) => {
                         const embedUrl = getShowcaseEmbedUrl(video.url);
+                        const instagram = getInstagramEmbedUrl(video.url);
                         let isPortraitEmbed = false;
                         try {
                           const host = new URL(video.url).hostname.replace(/^www\./, '');
-                          isPortraitEmbed = host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'tiktok.com' || host.endsWith('.tiktok.com');
+                          isPortraitEmbed = host === 'tiktok.com' || host.endsWith('.tiktok.com');
                         } catch {}
                         return (
                           <article key={video.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -2586,17 +2637,19 @@ export default function FitaTaekwondoApp() {
                               className={isPortraitEmbed ? "mx-auto overflow-hidden bg-slate-950" : "aspect-video bg-slate-950"}
                               style={isPortraitEmbed ? { width: 'min(100%, 380px, 42.1875vh)', aspectRatio: '9 / 16' } : undefined}
                             >
-                              {embedUrl ? (
+                              {instagram ? (
+                                <PlayVideoButton title={video.title} onClick={() => setActiveVideoModal({ url: video.url, title: video.title })} />
+                              ) : embedUrl ? (
                                 <iframe src={embedUrl} title={video.title} className="h-full w-full border-0" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen />
                               ) : (
-                                <video src={video.url} controls preload="metadata" className="h-full w-full object-contain" />
+                                <video src={video.url} controls playsInline preload="metadata" className="h-full w-full object-contain" />
                               )}
                             </div>
                             <div className="flex flex-wrap items-start justify-between gap-3 p-4">
                               <div className="min-w-0 break-words">
                                 <h4 className="text-sm font-bold text-[#0B1B3D]">{video.title}</h4>
                                 {video.comment && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{video.comment}</p>}
-                                <a href={video.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900">Apri video originale</a>
+                                {!video.url.startsWith('/api/articles/media?') && <a href={video.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900">Apri video originale</a>}
                               </div>
                               {user?.role === 'admin' && adminMode && (
                                 <div className="flex shrink-0 items-center gap-1">
@@ -2890,7 +2943,7 @@ export default function FitaTaekwondoApp() {
                   </h3>
                   <p className="text-slate-500 mt-0.5">Inserisci o aggiorna il contenuto del regolamento.</p>
                 </div>
-                <button type="button" onClick={() => setIsEditingModalOpen(false)} className="text-slate-400 hover:text-slate-600" aria-label="Chiudi">
+                <button type="button" disabled={isUploadingArticleMedia} onClick={() => setIsEditingModalOpen(false)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50" aria-label="Chiudi">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -2941,10 +2994,10 @@ export default function FitaTaekwondoApp() {
                 <div className="space-y-2 rounded-lg border border-slate-200 p-3">
                   <label className="block text-slate-600 font-bold">Media allegato <span className="font-normal text-slate-400">(facoltativo)</span></label>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setMediaSourceType('file')} className={`px-3 py-1.5 rounded-md font-bold ${mediaSourceType === 'file' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    <button type="button" disabled={isUploadingArticleMedia} onClick={() => setMediaSourceType('file')} className={`px-3 py-1.5 rounded-md font-bold ${mediaSourceType === 'file' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>
                       Carica file
                     </button>
-                    <button type="button" onClick={() => setMediaSourceType('url')} className={`px-3 py-1.5 rounded-md font-bold ${mediaSourceType === 'url' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    <button type="button" disabled={isUploadingArticleMedia} onClick={() => setMediaSourceType('url')} className={`px-3 py-1.5 rounded-md font-bold ${mediaSourceType === 'url' ? 'bg-[#0B1B3D] text-white' : 'bg-slate-100 text-slate-600'}`}>
                       Inserisci URL
                     </button>
                   </div>
@@ -2960,17 +3013,23 @@ export default function FitaTaekwondoApp() {
                         <p className="text-xs font-bold text-blue-900">Incolla qui un’immagine dagli appunti</p>
                         <p className="mt-1 text-[10px] text-blue-800">Clicca nell’area e premi Ctrl+V (⌘+V su Mac).</p>
                       </div>
-                      <p className="text-[11px] text-slate-500">Limite: 4 MB per immagine o video.</p>
-                      <input ref={articleMediaInputRef} type="file" accept="image/*,video/*" onChange={handleFileUpload} className="sr-only" aria-label="Seleziona immagine o video" />
-                      <button type="button" disabled={isUploadingArticleMedia} onClick={() => articleMediaInputRef.current?.click()} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-                        Scegli immagine o video
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <label className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 focus-within:ring-2 focus-within:ring-blue-500 has-[:disabled]:opacity-50">
+                          Scegli dalla galleria o dai file
+                          <input type="file" accept="image/*,video/*,.mov,.mp4,.webm,.m4v" disabled={isUploadingArticleMedia} onChange={handleFileUpload} className="sr-only" />
+                        </label>
+                        <label className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 focus-within:ring-2 focus-within:ring-blue-500 has-[:disabled]:opacity-50">
+                          Scegli documento
+                          <input type="file" accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.txt" disabled={isUploadingArticleMedia} onChange={handleArticleDocument} className="sr-only" />
+                        </label>
+                      </div>
+                      <p className="text-[11px] text-slate-500">Fino a 100 MB per foto e video, 4 MB per i documenti. Sul telefono, consenti l’accesso alle foto se richiesto dal dispositivo.</p>
                       {isUploadingArticleMedia && <p role="status" className="text-xs font-semibold text-blue-700">Caricamento file…</p>}
                     </div>
                   ) : (
                     <div className="flex flex-col sm:flex-row gap-2">
-                      <input type="url" value={formMediaUrl} onChange={(e) => setFormMediaUrl(e.target.value)} placeholder="https://..." className="flex-1 bg-slate-50 border border-slate-300 p-2 rounded-lg text-slate-800" />
-                      <select value={formMediaType} onChange={(e) => setFormMediaType(e.target.value as 'image' | 'video')} className="bg-slate-50 border border-slate-300 p-2 rounded-lg text-slate-800">
+                      <input type="url" aria-label="URL del media" value={formMediaUrl.startsWith('/') ? '' : formMediaUrl} onChange={(e) => { setFormMediaUrl(e.target.value); setSelectedFileName(null); if (formMediaType === 'document') setFormMediaType('video'); }} placeholder="https://..." className="flex-1 bg-slate-50 border border-slate-300 p-2 rounded-lg text-slate-800" />
+                      <select aria-label="Tipo di media" value={getInstagramEmbedUrl(formMediaUrl) ? 'video' : formMediaType === 'document' ? 'image' : formMediaType} disabled={Boolean(getInstagramEmbedUrl(formMediaUrl)) || formMediaUrl.startsWith('/')} onChange={(e) => setFormMediaType(e.target.value as 'image' | 'video')} className="bg-slate-50 border border-slate-300 p-2 rounded-lg text-slate-800">
                         <option value="image">Immagine</option>
                         <option value="video">Video</option>
                       </select>
@@ -2978,14 +3037,18 @@ export default function FitaTaekwondoApp() {
                   )}
                   {formMediaUrl && (
                     <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-2">
-                      {formMediaType === 'image' ? (
+                      {formMediaType === 'document' ? (
+                        <FileText className="h-6 w-6 shrink-0 text-blue-700" />
+                      ) : getShowcaseEmbedUrl(formMediaUrl) ? (
+                        <Video className="h-6 w-6 shrink-0 text-blue-700" />
+                      ) : formMediaType === 'image' ? (
                         <img src={formMediaUrl} alt="Anteprima del file caricato" className="h-16 w-20 shrink-0 rounded object-cover" />
                       ) : (
-                        <video src={formMediaUrl} className="h-16 w-20 shrink-0 rounded bg-black object-contain" muted playsInline />
+                        <video src={formMediaUrl} className="h-16 w-20 shrink-0 rounded bg-black object-contain" preload="metadata" muted playsInline />
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-semibold text-slate-700">{selectedFileName || 'File allegato'}</p>
-                        <p className="text-[10px] text-slate-500">{formMediaType === 'image' ? 'Immagine' : 'Video'}</p>
+                        <p className="text-[10px] text-slate-500">{formMediaType === 'document' ? 'Documento' : formMediaType === 'image' && !getInstagramEmbedUrl(formMediaUrl) ? 'Immagine' : 'Video'}</p>
                       </div>
                       <button type="button" disabled={isUploadingArticleMedia} onClick={handleRemoveArticleMedia} className="shrink-0 rounded-md border border-red-200 px-2.5 py-1.5 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">Rimuovi file</button>
                     </div>
@@ -2993,9 +3056,9 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-                  <button type="button" onClick={() => setIsEditingModalOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 font-bold">Annulla</button>
+                  <button type="button" disabled={isUploadingArticleMedia} onClick={() => setIsEditingModalOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 font-bold disabled:opacity-50">Annulla</button>
                   <button type="submit" disabled={isUploadingArticleMedia} className="px-4 py-2 rounded-lg bg-[#0B1B3D] text-white font-bold hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
-                    {isUploadingArticleMedia ? 'Caricamento immagine…' : editingSubsection ? 'Salva modifiche' : 'Salva articolo'}
+                    {isUploadingArticleMedia ? 'Caricamento file…' : editingSubsection ? 'Salva modifiche' : 'Salva articolo'}
                   </button>
                 </div>
               </form>
@@ -3276,19 +3339,38 @@ export default function FitaTaekwondoApp() {
       </AnimatePresence>
 
       {showcaseFormSectionId && isAccountAdmin && adminMode && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-3" onKeyDown={event => { if (event.key === 'Escape') setShowcaseFormSectionId(null); }}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-3" onKeyDown={event => { if (event.key === 'Escape' && !isUploadingShowcaseVideo) setShowcaseFormSectionId(null); }}>
           <section role="dialog" aria-modal="true" aria-labelledby="showcase-editor-title" className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 id="showcase-editor-title" className="text-lg font-bold text-[#0B1B3D]">{editingShowcaseVideoId ? 'Modifica video' : 'Aggiungi video'}</h2>
-              <button type="button" onClick={() => setShowcaseFormSectionId(null)} aria-label="Chiudi" className="rounded p-2 text-slate-600 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+              <button type="button" disabled={isUploadingShowcaseVideo} onClick={() => setShowcaseFormSectionId(null)} aria-label="Chiudi" className="rounded p-2 text-slate-600 hover:bg-slate-100"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={handleSaveShowcaseVideo} className="space-y-3">
               <label className="block text-xs font-bold text-slate-600">Titolo video
                 <input autoFocus required value={showcaseTitle} onChange={event => setShowcaseTitle(event.target.value)} placeholder="Es. Calcio girato in salto" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
               </label>
-              <label className="block text-xs font-bold text-slate-600">Link video (YouTube, Vimeo, Instagram, TikTok o file MP4)
-                <input required type="url" value={showcaseUrl} onChange={event => setShowcaseUrl(event.target.value)} placeholder="https://…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
-              </label>
+              <fieldset className="space-y-2" disabled={isUploadingShowcaseVideo}>
+                <legend className="text-xs font-bold text-slate-600">Origine del video</legend>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" aria-pressed={showcaseSource === 'url'} onClick={() => setShowcaseSource('url')} className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-bold aria-pressed:bg-blue-100 aria-pressed:text-blue-950">Inserisci link</button>
+                  <button type="button" aria-pressed={showcaseSource === 'file'} onClick={() => setShowcaseSource('file')} className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-bold aria-pressed:bg-blue-100 aria-pressed:text-blue-950">Carica file</button>
+                </div>
+                {showcaseSource === 'url' ? (
+                  <label className="block text-xs font-bold text-slate-600">Link video
+                    <input required type="url" value={showcaseUrl.startsWith('/') ? '' : showcaseUrl} onChange={event => setShowcaseUrl(event.target.value)} placeholder="YouTube, Vimeo, Instagram, TikTok o MP4" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+                  </label>
+                ) : (
+                  <>
+                    <label className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-slate-300 px-3 text-xs font-bold text-slate-700 focus-within:ring-2 focus-within:ring-blue-500">
+                      Scegli dalla galleria o dai file
+                      <input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={handleShowcaseFile} className="sr-only" />
+                    </label>
+                    {showcaseUrl.startsWith('/api/articles/media?') && <p className="break-words text-xs font-semibold text-slate-700">{showcaseFileName || 'Video caricato'}</p>}
+                    <p className="text-xs text-slate-500">Fino a 100 MB. Sul telefono, consenti l’accesso alla galleria se richiesto dal dispositivo.</p>
+                  </>
+                )}
+              </fieldset>
+              {isUploadingShowcaseVideo && <p role="status" className="text-xs font-semibold text-blue-700">Caricamento video…</p>}
               <label className="block text-xs font-bold text-slate-600">Commento
                 <textarea value={showcaseComment} onChange={event => setShowcaseComment(event.target.value)} rows={3} placeholder="Descrivi cosa mostra il video…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
               </label>
@@ -3296,7 +3378,7 @@ export default function FitaTaekwondoApp() {
                 <input value={showcaseGroup} onChange={event => setShowcaseGroup(event.target.value)} placeholder="Es. Calci girati, Equilibrio…" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
                 <span className="mt-1 block font-normal text-slate-500">I video con la stessa sezione appariranno raggruppati insieme.</span>
               </label>
-              <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">{editingShowcaseVideoId ? 'Salva modifiche' : 'Salva video'}</button>
+              <button type="submit" disabled={isUploadingShowcaseVideo} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{editingShowcaseVideoId ? 'Salva modifiche' : 'Salva video'}</button>
             </form>
           </section>
         </div>
@@ -3305,10 +3387,10 @@ export default function FitaTaekwondoApp() {
       {sectionRename && isAccountAdmin && adminMode && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-3" onKeyDown={event => { if (event.key === 'Escape') setSectionRename(null); }}>
           <section role="dialog" aria-modal="true" aria-labelledby="section-rename-title" className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl sm:p-6">
-            <h2 id="section-rename-title" className="mb-3 text-lg font-bold text-[#0B1B3D]">{sectionRename.group === undefined ? 'Rinomina sezione' : 'Rinomina gruppo video'}</h2>
+            <h2 id="section-rename-title" className="mb-3 text-lg font-bold text-[#0B1B3D]">{sectionRename.articleId ? 'Rinomina sottosezione' : sectionRename.group === undefined ? 'Rinomina sezione' : 'Rinomina gruppo video'}</h2>
             <form onSubmit={saveSectionName} className="space-y-3">
               <label className="block text-sm font-semibold text-slate-700">Nome
-                <input autoFocus required maxLength={80} value={sectionRename.name} onChange={event => {
+                <input autoFocus required maxLength={sectionRename.articleId ? undefined : 80} value={sectionRename.name} onChange={event => {
                   const name = event.target.value;
                   setSectionRename(current => current ? { ...current, name } : null);
                 }} className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800" />
@@ -3357,22 +3439,15 @@ export default function FitaTaekwondoApp() {
         </div>
       )}
 
-      {/* VIDEO PLAYER MODAL */}
-      <AnimatePresence>
-        {activeVideoModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="w-full max-w-2xl bg-white rounded-xl overflow-hidden shadow-2xl">
-              <div className="p-3 bg-[#0B1B3D] text-white flex items-center justify-between">
-                <h3 className="text-xs font-bold flex items-center gap-2"><Video className="w-4 h-4 text-red-400" /> VR Replay</h3>
-                <button onClick={() => setActiveVideoModal(null)} className="text-slate-300"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="aspect-video bg-black">
-                <video src={activeVideoModal.url} controls autoPlay className="w-full h-full object-contain" />
-              </div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
+      {activeVideoModal && (
+        <VideoDialog
+          title={activeVideoModal.title}
+          url={activeVideoModal.url}
+          embedUrl={getShowcaseEmbedUrl(activeVideoModal.url)}
+          instagram={Boolean(getInstagramEmbedUrl(activeVideoModal.url))}
+          onClose={() => setActiveVideoModal(null)}
+        />
+      )}
 
     </div>
   );
