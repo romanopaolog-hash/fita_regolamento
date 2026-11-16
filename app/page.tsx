@@ -38,6 +38,7 @@ import {
   FolderOpen,
   Square,
   ShieldCheck,
+  LoaderCircle,
   Eye,
   EyeOff,
   ArrowRightLeft,
@@ -537,7 +538,7 @@ export default function FitaTaekwondoApp() {
   const newsSyncEtagRef = useRef<string | null>(null);
   const lastSyncedNewsRef = useRef<string | null>(null);
   const newsSyncAvailableRef = useRef(false);
-  const [favorites, setFavorites] = useState<string[]>([]);
+  const [accountFavorites, setAccountFavorites] = useState<{ userId: string; items: string[] } | null>(null);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [articleSort, setArticleSort] = useState<'custom' | 'title-asc' | 'title-desc' | 'date-asc' | 'date-desc' | 'favorites-first'>('custom');
@@ -669,6 +670,51 @@ export default function FitaTaekwondoApp() {
 
   const { isLoaded: clerkLoaded, user: clerkUser } = useUser();
   const { signOut } = useClerk();
+  const [approvalCheck, setApprovalCheck] = useState<{ userId: string; status: 'checking' | 'pending' | 'rejected' | 'error' } | null>(null);
+  const currentAccountId = clerkUser?.id;
+  const favorites = accountFavorites && accountFavorites.userId === currentAccountId ? accountFavorites.items : [];
+  const currentApprovalCheck = approvalCheck?.userId === currentAccountId ? approvalCheck : null;
+  const isCheckingApproval = currentApprovalCheck?.status === 'checking';
+
+  const verifyApproval = async () => {
+    if (!clerkUser || isCheckingApproval) return;
+    const userId = clerkUser.id;
+    setApprovalCheck({ userId, status: 'checking' });
+    try {
+      const updated = await clerkUser.reload();
+      const status = getAccountApprovalStatus(updated);
+      if (status === 'approved') {
+        window.location.reload();
+        return;
+      }
+      setApprovalCheck({ userId, status });
+    } catch {
+      setApprovalCheck({ userId, status: 'error' });
+    }
+  };
+
+  useEffect(() => {
+    if (!currentAccountId) return;
+    let items: string[] = [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(`tkd_favorites_${currentAccountId}`) ?? '[]');
+      if (Array.isArray(saved)) items = saved.filter((value): value is string => typeof value === 'string');
+    } catch {}
+    setAccountFavorites({ userId: currentAccountId, items });
+  }, [currentAccountId]);
+
+  useEffect(() => {
+    if (!accountFavorites || accountFavorites.userId !== currentAccountId) return;
+    try { localStorage.setItem(`tkd_favorites_${currentAccountId}`, JSON.stringify(accountFavorites.items)); } catch {}
+  }, [accountFavorites, currentAccountId]);
+
+  const setFavorites = (update: (items: string[]) => string[]) => {
+    if (!currentAccountId) return;
+    setAccountFavorites(previous => ({
+      userId: currentAccountId,
+      items: update(previous?.userId === currentAccountId ? previous.items : []),
+    }));
+  };
 
   useEffect(() => {
     if (!clerkLoaded || !clerkUser || getAccountApprovalStatus(clerkUser) !== 'approved') return;
@@ -710,8 +756,6 @@ export default function FitaTaekwondoApp() {
         setIsNewsLoaded(true);
         showToast('Archivio news condiviso non raggiungibile. Riprova tra poco.');
       });
-    const savedFavs = localStorage.getItem('tkd_favorites');
-    if (savedFavs) { try { setFavorites(JSON.parse(savedFavs)); } catch (e) {} }
     // Remove the legacy browser-only accounts and plaintext passwords during the Clerk migration.
     localStorage.removeItem('tkd_users_list');
     localStorage.removeItem('tkd_remember_me');
@@ -849,7 +893,6 @@ export default function FitaTaekwondoApp() {
 
     return () => window.clearTimeout(timer);
   }, [newsList, isNewsLoaded, user?.role]);
-  useEffect(() => { localStorage.setItem('tkd_favorites', JSON.stringify(favorites)); }, [favorites]);
   const isAccountAdmin = user?.role === 'admin';
 
   useEffect(() => {
@@ -2030,7 +2073,7 @@ export default function FitaTaekwondoApp() {
   }
 
   if (getAccountApprovalStatus(clerkUser) !== 'approved') {
-    const isRejected = getAccountApprovalStatus(clerkUser) === 'rejected';
+    const isRejected = getAccountApprovalStatus(clerkUser) === 'rejected' || currentApprovalCheck?.status === 'rejected';
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F4F6F9] p-4">
         <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-xl">
@@ -2044,13 +2087,25 @@ export default function FitaTaekwondoApp() {
           <p className="mt-3 text-xs text-slate-500">{clerkUser.primaryEmailAddress?.emailAddress || clerkUser.emailAddresses[0]?.emailAddress}</p>
           <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
             {!isRejected && (
-              <button type="button" onClick={() => clerkUser.reload()} className="rounded-lg bg-[#0B1B3D] px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">
-                Verifica approvazione
-              </button>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.96 }}
+                onClick={() => void verifyApproval()}
+                disabled={isCheckingApproval}
+                aria-busy={isCheckingApproval}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#0B1B3D] px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-75"
+              >
+                {isCheckingApproval && <LoaderCircle aria-hidden="true" className="h-4 w-4 motion-safe:animate-spin" />}
+                {isCheckingApproval ? 'Verifica in corso…' : 'Verifica approvazione'}
+              </motion.button>
             )}
-            <button type="button" onClick={() => signOut()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            <button type="button" disabled={isCheckingApproval} onClick={() => signOut()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               Esci
             </button>
+          </div>
+          <div role="status" className="text-sm text-slate-700">
+            {!isRejected && currentApprovalCheck?.status === 'pending' && <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-amber-900">La richiesta è ancora in attesa. Un amministratore deve ancora approvarla.</p>}
+            {!isRejected && currentApprovalCheck?.status === 'error' && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-red-700">Impossibile verificare la richiesta. Riprova tra poco.</p>}
           </div>
         </section>
       </main>

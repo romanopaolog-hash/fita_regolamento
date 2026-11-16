@@ -21,7 +21,7 @@ async function requireAdmin() {
 
   const clerk = await clerkClient();
   const currentUser = await clerk.users.getUser(userId);
-  if (currentUser.publicMetadata.role !== 'admin') {
+  if (currentUser.banned || currentUser.publicMetadata.role !== 'admin') {
     return { response: Response.json({ error: 'Permessi admin richiesti.' }, { status: 403, headers: noStore }) };
   }
   return { clerk };
@@ -59,7 +59,7 @@ export async function GET() {
     }
 
     const requests = allUsers
-      .filter(user => user.publicMetadata.role !== 'admin')
+      .filter(user => !user.banned && user.publicMetadata.role !== 'admin')
       .map(toRequest)
       .filter(user => user.status === 'pending' || user.status === 'rejected')
       .sort((a, b) => a.createdAt - b.createdAt);
@@ -91,7 +91,7 @@ export async function PATCH(request: Request) {
 
     const target = await access.clerk.users.getUser(body.userId);
     const status = getAccountApprovalStatus(target);
-    if (target.publicMetadata.role === 'admin' || status === 'approved') {
+    if (target.banned || target.publicMetadata.role === 'admin' || status === 'approved') {
       return Response.json({ error: 'Questo account non ha una richiesta in attesa.' }, { status: 409, headers: noStore });
     }
 

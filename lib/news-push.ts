@@ -2,10 +2,10 @@ import { createCipheriv, createECDH, createHash, createPrivateKey, generateKeyPa
 import { del, get, list, put } from '@vercel/blob';
 import { clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from './account-approval';
+import { PUSH_DEVICE_PREFIX } from './account-data';
 import { wantsPortalNotifications } from './account-preferences';
 
 const keyPath = 'fita-regolamento/push/vapid.json';
-const devicePrefix = 'fita-regolamento/push/devices/';
 type Keys = { publicKey: string; privateKey: string };
 type SubscriptionKeys = { p256dh: string; auth: string };
 type Device = { userId: string; endpoint: string; subscriptionKeys?: SubscriptionKeys };
@@ -91,7 +91,7 @@ export function validPushEndpoint(value: unknown) {
 }
 
 export async function registerPushDevice(userId: string, endpoint: URL, subscriptionKeys: SubscriptionKeys) {
-  const path = devicePrefix + createHash('sha256').update(endpoint.href).digest('hex') + '.json';
+  const path = PUSH_DEVICE_PREFIX + createHash('sha256').update(endpoint.href).digest('hex') + '.json';
   await put(path, JSON.stringify({ userId, endpoint: endpoint.href, subscriptionKeys }), {
     access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json',
   });
@@ -109,7 +109,7 @@ export async function sendNewsPush(notice: NewsNotice) {
   const consent = new Map<string, Promise<boolean>>();
   let cursor: string | undefined;
   do {
-    const page = await list({ prefix: devicePrefix, limit: 50, cursor });
+    const page = await list({ prefix: PUSH_DEVICE_PREFIX, limit: 50, cursor });
     for (let offset = 0; offset < page.blobs.length; offset += 10) {
       await Promise.allSettled(page.blobs.slice(offset, offset + 10).map(async blob => {
         const device = await readJson<Device>(blob.pathname);

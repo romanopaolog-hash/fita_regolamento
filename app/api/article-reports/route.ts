@@ -2,10 +2,10 @@ import { del, get, list, put } from '@vercel/blob';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from '../../../lib/account-approval';
 import { readArticles } from '../../../lib/article-archive';
+import { ARTICLE_REPORT_PREFIX } from '../../../lib/account-data';
 import { ARTICLE_REPORT_MAX_LENGTH, type ArticleReport } from '../../../lib/article-report';
 import { isDemoArticle } from '../../../lib/demo-articles';
 
-const prefix = 'fita-regolamento/article-reports/';
 const noStore = { 'Cache-Control': 'no-store' };
 const reportIdPattern = /^\d{13}-[a-f0-9-]{36}$/;
 
@@ -60,13 +60,14 @@ export async function POST(request: Request) {
       articleId,
       articleTitle: article.title,
       sectionTitle: typeof section.title === 'string' ? section.title : '',
+      authorUserId: user.id,
       authorName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Utente',
       kind,
       message,
       createdAt,
     };
 
-    await put(prefix + report.id + '.json', JSON.stringify(report), {
+    await put(ARTICLE_REPORT_PREFIX + report.id + '.json', JSON.stringify(report), {
       access: 'private', contentType: 'application/json', addRandomSuffix: false, allowOverwrite: false,
     });
     return Response.json({ id: report.id }, { status: 201, headers: noStore });
@@ -80,10 +81,10 @@ export async function GET(request: Request) {
   try {
     const user = await currentUser();
     if (!user) return fail('Accesso richiesto.', 401);
-    if (user.publicMetadata.role !== 'admin') return fail('Permessi admin richiesti.', 403);
+    if (user.banned || user.publicMetadata.role !== 'admin') return fail('Permessi admin richiesti.', 403);
 
     const cursor = new URL(request.url).searchParams.get('cursor') ?? undefined;
-    const page = await list({ prefix, cursor, limit: 20 });
+    const page = await list({ prefix: ARTICLE_REPORT_PREFIX, cursor, limit: 20 });
     const reports = await Promise.all(page.blobs.map(async item => {
       const blob = await get(item.pathname, { access: 'private', useCache: false });
       return blob?.statusCode === 200 ? await new Response(blob.stream).json() as ArticleReport : null;
@@ -102,11 +103,11 @@ export async function DELETE(request: Request) {
   try {
     const user = await currentUser();
     if (!user) return fail('Accesso richiesto.', 401);
-    if (user.publicMetadata.role !== 'admin') return fail('Permessi admin richiesti.', 403);
+    if (user.banned || user.publicMetadata.role !== 'admin') return fail('Permessi admin richiesti.', 403);
 
     const id = new URL(request.url).searchParams.get('id');
     if (!id || !reportIdPattern.test(id)) return fail('Segnalazione non valida.', 400);
-    const blob = await get(prefix + id + '.json', { access: 'private', useCache: false });
+    const blob = await get(ARTICLE_REPORT_PREFIX + id + '.json', { access: 'private', useCache: false });
     if (blob?.statusCode === 200) await del(blob.blob.url);
     return Response.json({ ok: true }, { headers: noStore });
   } catch {
