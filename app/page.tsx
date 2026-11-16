@@ -2407,7 +2407,7 @@ export default function FitaTaekwondoApp() {
                 </div>
 
                 {visibleTabs.length > 0 && (
-                  <nav aria-label="Sottosezioni" className="flex w-full flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 sm:w-auto">
+                  <nav aria-label="Sottosezioni" className="flex w-full min-w-0 flex-wrap gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-slate-100 p-1 sm:w-auto">
                     {visibleTabs.map(tab => {
                       const Icon = tab.kind === 'rules' ? BookOpen : tab.kind === 'showcase' ? Video : Download;
                       const count = tab.kind === 'materials'
@@ -2419,10 +2419,10 @@ export default function FitaTaekwondoApp() {
                           type="button"
                           aria-current={tab.id === activeTab?.id ? 'true' : undefined}
                           onClick={() => selectSectionTab(tab.id)}
-                          className={`flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-center text-xs font-bold transition-colors sm:min-h-8 sm:flex-none ${tab.id === activeTab?.id ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
+                          className={`flex min-h-12 min-w-min flex-[1_1_4.75rem] flex-col items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-center text-xs font-bold leading-tight transition-colors sm:min-h-8 sm:flex-none sm:flex-row sm:gap-1.5 sm:px-3 ${tab.id === activeTab?.id ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
                         >
                           <Icon className="h-3.5 w-3.5 shrink-0" />
-                          <span className="[overflow-wrap:anywhere]">{tab.title}{count !== null && <span className="hidden sm:inline"> ({count})</span>}</span>
+                          <span className="text-balance whitespace-normal break-normal">{tab.title}{count !== null && <span className="hidden sm:inline"> ({count})</span>}</span>
                         </button>
                       );
                     })}
