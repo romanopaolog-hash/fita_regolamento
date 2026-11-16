@@ -7,14 +7,12 @@ import { UserProfile, useClerk, useUser } from '@clerk/nextjs';
 
 import { ArrowLeft, ShieldCheck, UserRound } from 'lucide-react';
 import { formatPersonName } from '../../lib/format-person-name';
+import { getAccountRegion, REGIONS, wantsPortalNotifications } from '../../lib/account-preferences';
 
 import ThemeSettings from './theme-settings';
 import ArticleReports from './article-reports';
 
-const regions = [
-  'Campania', 'Lazio', 'Lombardia', 'Piemonte', 'Sicilia',
-  'Veneto', 'Emilia-Romagna', 'Puglia', 'Toscana',
-];
+type UserSort = 'name' | 'registered' | 'region';
 
 type ManagedUser = {
   id: string;
@@ -28,7 +26,9 @@ type ManagedUser = {
 export default function ProfileCenter() {
   const { isLoaded, user } = useUser();
   const { signOut } = useClerk();
-  const [region, setRegion] = useState('Campania');
+  const [region, setRegion] = useState('');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [userSort, setUserSort] = useState<UserSort>('name');
   const [isSavingRegion, setIsSavingRegion] = useState(false);
   const [regionMessage, setRegionMessage] = useState('');
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
@@ -43,7 +43,7 @@ export default function ProfileCenter() {
     setUsersLoading(true);
     setUsersError('');
     try {
-      const response = await fetch(`/api/admin/users?offset=${offset}`, { cache: 'no-store' });
+      const response = await fetch(`/api/admin/users?offset=${offset}&sort=${userSort}`, { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Impossibile caricare gli utenti.');
       setManagedUsers(current => append ? [...current, ...result.users] : result.users);
@@ -53,13 +53,15 @@ export default function ProfileCenter() {
     } finally {
       setUsersLoading(false);
     }
-  }, []);
+  }, [userSort]);
+
+  const savedRegion = getAccountRegion(user?.unsafeMetadata.region);
+  const savedNotificationsEnabled = user ? wantsPortalNotifications(user) : true;
 
   useEffect(() => {
-    if (!user) return;
-    const savedRegion = user.unsafeMetadata.region;
-    setRegion(typeof savedRegion === 'string' && regions.includes(savedRegion) ? savedRegion : 'Campania');
-  }, [user]);
+    setRegion(savedRegion);
+    setNotificationsEnabled(savedNotificationsEnabled);
+  }, [user?.id, savedRegion, savedNotificationsEnabled]);
 
   useEffect(() => {
     if (isAdmin) void loadUsers(0, false);
@@ -102,6 +104,7 @@ export default function ProfileCenter() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Impossibile eliminare l’utente.');
       setManagedUsers(current => current.filter(item => item.id !== result.deletedUserId));
+      await loadUsers();
       setUsersMessage(`Account ${managedUser.email} eliminato.`);
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : 'Impossibile eliminare l’utente.');
@@ -110,7 +113,7 @@ export default function ProfileCenter() {
     }
   };
 
-  const saveRegion = async (event: FormEvent<HTMLFormElement>) => {
+  const savePreferences = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user) return;
 
@@ -118,12 +121,12 @@ export default function ProfileCenter() {
     setRegionMessage('');
     try {
       await user.update({
-        unsafeMetadata: { ...user.unsafeMetadata, region },
+        unsafeMetadata: { ...user.unsafeMetadata, region: getAccountRegion(region), notificationsEnabled },
       });
-      setManagedUsers(current => current.map(item => item.id === user.id ? { ...item, region } : item));
-      setRegionMessage('Regione aggiornata.');
+      if (isAdmin && region !== savedRegion) await loadUsers();
+      setRegionMessage('Preferenze salvate.');
     } catch {
-      setRegionMessage('Non è stato possibile aggiornare la regione.');
+      setRegionMessage('Impossibile salvare le preferenze.');
     } finally {
       setIsSavingRegion(false);
     }
@@ -164,15 +167,20 @@ export default function ProfileCenter() {
 
         <section aria-labelledby="fita-region-title" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 id="fita-region-title" className="text-lg font-bold text-[#0B1B3D]">Dati FITA</h2>
-          <form onSubmit={saveRegion} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <form onSubmit={savePreferences} className="mt-3 space-y-3">
             <div className="w-full max-w-sm">
               <label htmlFor="profile-region" className="mb-1 block text-sm font-semibold text-slate-700">Regione / Comitato</label>
               <select id="profile-region" value={region} onChange={event => setRegion(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-800">
-                {regions.map(item => <option key={item} value={item}>{item}</option>)}
+                <option value="">Regione non indicata</option>
+                {REGIONS.map(item => <option key={item} value={item}>{item}</option>)}
               </select>
             </div>
+            <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700">
+              <input type="checkbox" checked={notificationsEnabled} onChange={event => setNotificationsEnabled(event.target.checked)} className="h-4 w-4 accent-[#0B1B3D]" />
+              Ricevi le notifiche del portale
+            </label>
             <button type="submit" disabled={isSavingRegion} className="rounded-lg bg-[#0B1B3D] px-4 py-2.5 text-sm font-bold text-white disabled:cursor-wait disabled:opacity-60">
-              {isSavingRegion ? 'Salvataggio…' : 'Salva regione'}
+              {isSavingRegion ? 'Salvataggio…' : 'Salva preferenze'}
             </button>
             {regionMessage && <p role="status" className="text-sm text-slate-600">{regionMessage}</p>}
           </form>
@@ -194,6 +202,19 @@ export default function ProfileCenter() {
                 {usersLoading ? 'Aggiornamento…' : 'Aggiorna elenco'}
               </button>
             </div>
+            <label className="mt-4 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
+              Ordina per
+              <select value={userSort} onChange={event => {
+                setUserSort(event.target.value as UserSort);
+                setManagedUsers([]);
+                setNextUsersOffset(null);
+                setUsersLoading(true);
+              }} disabled={usersLoading || Boolean(userActionId) || isSavingRegion} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm">
+                <option value="name">Ordine alfabetico (A–Z)</option>
+                <option value="registered">Data di registrazione (più recenti)</option>
+                <option value="region">Regione di appartenenza (A–Z)</option>
+              </select>
+            </label>
             {usersMessage && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{usersMessage}</p>}
             {usersError && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{usersError}</p>}
             {usersLoading && managedUsers.length === 0 && <p className="mt-4 text-sm text-slate-600">Caricamento utenti…</p>}
@@ -202,10 +223,7 @@ export default function ProfileCenter() {
             )}
             {managedUsers.length > 0 && (
               <ul className="mt-4 divide-y divide-slate-200 rounded-lg border border-slate-200">
-                {[...managedUsers].sort((a, b) => {
-                  if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
-                  return a.name.localeCompare(b.name, 'it', { sensitivity: 'base' });
-                }).map(managedUser => {
+                {managedUsers.map(managedUser => {
                   const isCurrentUser = managedUser.id === user.id;
                   const isBusy = userActionId === managedUser.id;
                   return (

@@ -2,6 +2,7 @@ import { createCipheriv, createECDH, createHash, createPrivateKey, generateKeyPa
 import { del, get, list, put } from '@vercel/blob';
 import { clerkClient } from '@clerk/nextjs/server';
 import { isAccountApproved } from './account-approval';
+import { wantsPortalNotifications } from './account-preferences';
 
 const keyPath = 'fita-regolamento/push/vapid.json';
 const devicePrefix = 'fita-regolamento/push/devices/';
@@ -117,7 +118,7 @@ export async function sendNewsPush(notice: NewsNotice) {
         if (!endpoint) return;
         if (!consent.has(device.userId)) {
           consent.set(device.userId, clerk.users.getUser(device.userId)
-            .then(user => isAccountApproved(user))
+            .then(user => isAccountApproved(user) && wantsPortalNotifications(user))
             .catch(() => false));
         }
         if (!(await consent.get(device.userId))) return;
