@@ -34,6 +34,7 @@ import {
   Key,
   CheckCircle,
   CheckSquare,
+  Images,
   Square,
   ShieldCheck,
   Eye,
@@ -57,6 +58,7 @@ function getArticleSubtitle(article: { description?: string }) {
 import InstallAppButton from './install-app-button';
 import { ARTICLE_REPORT_MAX_LENGTH } from '../lib/article-report';
 import { uploadArticleMedia } from '../lib/article-media';
+import { getSectionTabs, hasSectionTab, SECTION_TAB_TYPES, type SectionTab, type SectionTabKind } from '../lib/section-tabs';
 import { getInstagramEmbedUrl, PlayVideoButton, VideoDialog } from './video-dialog';
 
 type PortalNotice = { id: string; title: string; kind: 'News' | 'Articolo'; at: number };
@@ -307,10 +309,10 @@ function renderRichContent(content: string, onArticleLink?: (id: string) => void
   );
 }
 
-function reconcileNewsLists(cloudNews: any[], deviceNews: any[], lastSyncedNews: any[]) {
-  const cloudById = new Map<string, any>(cloudNews.map(item => [item.id, item]));
-  const deviceById = new Map<string, any>(deviceNews.map(item => [item.id, item]));
-  const snapshotById = new Map<string, any>(lastSyncedNews.map(item => [item.id, item]));
+function reconcileItemsById<Item extends { id: string }>(cloudItems: Item[], deviceItems: Item[], lastSyncedItems: Item[]) {
+  const cloudById = new Map(cloudItems.map(item => [item.id, item]));
+  const deviceById = new Map(deviceItems.map(item => [item.id, item]));
+  const snapshotById = new Map(lastSyncedItems.map(item => [item.id, item]));
 
   for (const [id, priorItem] of snapshotById) {
     const deviceItem = deviceById.get(id);
@@ -335,8 +337,12 @@ const DEFAULT_SECTIONS: Array<{
   shortTitle: string;
   subtitle: string;
   code: string;
-  subsections: Array<{ id: string; title: string; content: string; description?: string; tags: string[]; media: Array<{ type: string; url: string; caption: string }> }>;
-  documents: Array<{ id: string; title: string; format: string; size: string; date: string; description: string; url: string }>;
+  sectionTabs?: SectionTab[];
+  showcaseVideos?: ShowcaseVideo[];
+  showcaseGroupOrder?: string[];
+  videoGroupOrderByTab?: Record<string, string[]>;
+  subsections: Array<{ id: string; tabId?: string; title: string; content: string; description?: string; tags: string[]; media: Array<{ type: string; url: string; caption: string }> }>;
+  documents: Array<{ id: string; tabId?: string; title: string; format: string; size: string; date: string; description: string; url: string }>;
 }> = [
   {
     id: 'kyorugi',
@@ -395,13 +401,15 @@ function mergeArticleSections(cloudSections: any[], deviceSections: any[]) {
       subsections: [...articleMap.values()],
       documents: cloudSection?.documents ?? deviceSection?.documents ?? [],
       showcaseVideos: cloudSection?.showcaseVideos ?? deviceSection?.showcaseVideos ?? [],
-      showcaseGroupOrder: cloudSection?.showcaseGroupOrder ?? deviceSection?.showcaseGroupOrder ?? []
+      showcaseGroupOrder: cloudSection?.showcaseGroupOrder ?? deviceSection?.showcaseGroupOrder ?? [],
+      videoGroupOrderByTab: cloudSection?.videoGroupOrderByTab ?? deviceSection?.videoGroupOrderByTab
     };
   });
 }
 
 type ShowcaseVideo = {
   id: string;
+  tabId?: string;
   title: string;
   url: string;
   comment?: string;
@@ -497,6 +505,15 @@ function reconcileArticleSections(cloudSections: any[], deviceSections: any[], l
       documents: [...documents.values()],
       title: deviceSection.title !== snapshotSection.title ? deviceSection.title : cloudSection.title,
       shortTitle: deviceSection.shortTitle !== snapshotSection.shortTitle ? deviceSection.shortTitle : cloudSection.shortTitle,
+      sectionTabs: (deviceSection.sectionTabs || cloudSection.sectionTabs)
+        ? reconcileItemsById(getSectionTabs(cloudSection), getSectionTabs(deviceSection), getSectionTabs(snapshotSection))
+        : undefined,
+      videoGroupOrderByTab: {
+        ...cloudSection.videoGroupOrderByTab,
+        ...Object.fromEntries(Object.entries(deviceSection.videoGroupOrderByTab ?? {}).filter(([tabId, order]) =>
+          JSON.stringify(order) !== JSON.stringify(snapshotSection.videoGroupOrderByTab?.[tabId])
+        )),
+      },
       showcaseVideos: reconcileShowcaseVideos(
         cloudSection.showcaseVideos ?? [], deviceSection.showcaseVideos ?? [], snapshotSection.showcaseVideos ?? []
       ),
@@ -527,7 +544,9 @@ export default function FitaTaekwondoApp() {
   const [selectedNewsCategory, setSelectedNewsCategory] = useState<string>('Tutti');
 
   const [activeSectionId, setActiveSectionId] = useState('home');
-  const [activeTabMode, setActiveTabMode] = useState<'rules' | 'materials' | 'showcase'>('rules');
+  const [selectedTabId, setSelectedTabId] = useState('rules');
+  const [managedSectionId, setManagedSectionId] = useState<string | null>(null);
+  const [tabDraft, setTabDraft] = useState<{ id?: string; title: string; kind: SectionTabKind } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const articleSearchInputRef = useRef<HTMLInputElement>(null);
@@ -583,7 +602,7 @@ export default function FitaTaekwondoApp() {
   const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [showcaseFormSectionId, setShowcaseFormSectionId] = useState<string | null>(null);
-  const [sectionRename, setSectionRename] = useState<{ sectionId: string; articleId?: string; group?: string; name: string } | null>(null);
+  const [sectionRename, setSectionRename] = useState<{ sectionId: string; group?: string; name: string } | null>(null);
   const [editingShowcaseVideoId, setEditingShowcaseVideoId] = useState<string | null>(null);
   const [showcaseTitle, setShowcaseTitle] = useState('');
   const [showcaseUrl, setShowcaseUrl] = useState('');
@@ -625,6 +644,7 @@ export default function FitaTaekwondoApp() {
     );
   }, [bulkImportPreview, excludedBulkArticleIndices]);
   const [bulkImportSectionId, setBulkImportSectionId] = useState('kyorugi');
+  const [bulkImportTabId, setBulkImportTabId] = useState('rules');
 
   const [newsTitle, setNewsTitle] = useState('');
   const [newsCategory, setNewsCategory] = useState('Regionale');
@@ -811,7 +831,7 @@ export default function FitaTaekwondoApp() {
           newsSyncEtagRef.current = latest.etag ?? null;
           const cloudNews = Array.isArray(latest.news) ? latest.news : [];
           const snapshot = lastSyncedNewsRef.current ? JSON.parse(lastSyncedNewsRef.current) : [];
-          const mergedNews = reconcileNewsLists(cloudNews, newsList, snapshot);
+          const mergedNews = reconcileItemsById(cloudNews, newsList, snapshot);
           lastSyncedNewsRef.current = JSON.stringify(cloudNews);
           if (JSON.stringify(mergedNews) !== JSON.stringify(cloudNews)) setNewsList(mergedNews);
           return;
@@ -938,7 +958,7 @@ export default function FitaTaekwondoApp() {
           if (section.hidden) continue;
           for (const article of section.subsections) {
             const at = Date.parse(article.notifiedAt);
-            if (!article.hidden && Number.isFinite(at)) {
+            if (!article.hidden && Number.isFinite(at) && hasSectionTab(section, 'rules', article)) {
               notices.push({ id: `article-${article.id}`, kind: 'Articolo', title: article.title, at });
             }
           }
@@ -1243,6 +1263,38 @@ export default function FitaTaekwondoApp() {
     showToast('Notizia eliminata.');
   };
 
+  const saveTab = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isAccountAdmin || !adminMode || !managedSection || !tabDraft) return;
+    const title = tabDraft.title.trim();
+    if (!title) return;
+    const id = tabDraft.id ?? crypto.randomUUID();
+    const tab: SectionTab = { id, title, kind: tabDraft.kind };
+    setSections(previous => previous.map(section => {
+      if (section.id !== managedSection.id) return section;
+      const tabs = getSectionTabs(section);
+      return {
+        ...section,
+        sectionTabs: tabDraft.id
+          ? tabs.map(item => item.id === id ? { ...item, title } : item)
+          : [...tabs, tab],
+      };
+    }));
+    if (!tabDraft.id) setSelectedTabId(id);
+    setTabDraft(null);
+  };
+
+  const setTabArchived = (tab: SectionTab, archived: boolean) => {
+    if (!isAccountAdmin || !adminMode || !managedSection) return;
+    setSections(previous => previous.map(section => section.id === managedSection.id
+      ? { ...section, sectionTabs: getSectionTabs(section).map(item => item.id === tab.id ? { ...item, archived } : item) }
+      : section
+    ));
+    if (tabDraft?.id === tab.id) setTabDraft(null);
+    if (!archived) setSelectedTabId(tab.id);
+    showToast(archived ? 'Sottosezione rimossa.' : 'Sottosezione ripristinata.');
+  };
+
   const openShowcaseEditor = (sectionId: string, video?: ShowcaseVideo) => {
     setEditingShowcaseVideoId(video?.id ?? null);
     setShowcaseTitle(video?.title ?? '');
@@ -1287,6 +1339,7 @@ export default function FitaTaekwondoApp() {
     const editingId = editingShowcaseVideoId;
     const video = {
       id: editingId || 'showcase-' + Date.now(),
+      tabId: activeTab?.id ?? 'showcase',
       title,
       url,
       comment: showcaseComment.trim(),
@@ -1317,7 +1370,7 @@ export default function FitaTaekwondoApp() {
     if (!isAccountAdmin || !adminMode || !sectionRename) return;
     const name = sectionRename.name.trim();
     if (!name) return;
-    const { sectionId, articleId, group } = sectionRename;
+    const { sectionId, group } = sectionRename;
     const section = sections.find(item => item.id === sectionId);
     if (!section) return;
 
@@ -1328,18 +1381,15 @@ export default function FitaTaekwondoApp() {
 
     setSections(previous => previous.map(item => {
       if (item.id !== sectionId) return item;
-      if (articleId) {
-        return {
-          ...item,
-          subsections: item.subsections.map(article => article.id === articleId ? { ...article, title: name } : article),
-        };
-      }
       if (group === undefined) return { ...item, title: name, shortTitle: name };
       const videos: ShowcaseVideo[] = (item as any).showcaseVideos || [];
       return {
         ...item,
-        showcaseVideos: videos.map(video => showcaseGroupName(video) === group ? { ...video, group: name } : video),
-        showcaseGroupOrder: orderedShowcaseGroupNames.map(value => value === group ? name : value),
+        showcaseVideos: videos.map(video => (video.tabId ?? 'showcase') === activeTab?.id && showcaseGroupName(video) === group ? { ...video, group: name } : video),
+        videoGroupOrderByTab: {
+          ...item.videoGroupOrderByTab,
+          [activeTab?.id ?? 'showcase']: orderedShowcaseGroupNames.map(value => value === group ? name : value),
+        },
       };
     }));
     setSectionRename(null);
@@ -1352,7 +1402,7 @@ export default function FitaTaekwondoApp() {
       if (section.id !== activeSectionId) return section;
       const videos = [...((section as any).showcaseVideos || [])];
       const groupIndices = videos.flatMap((video: any, index: number) =>
-        ((String(video.group || '').trim() || 'Generale') === groupName) ? [index] : []
+        ((video.tabId ?? 'showcase') === activeTab?.id && showcaseGroupName(video) === groupName) ? [index] : []
       );
       const groupPosition = groupIndices.findIndex(index => videos[index].id === videoId);
       const nextIndex = groupIndices[groupPosition + direction];
@@ -1367,24 +1417,18 @@ export default function FitaTaekwondoApp() {
     if (!user || user.role !== 'admin' || !adminMode) return;
     setSections(prev => prev.map(section => {
       if (section.id !== activeSectionId) return section;
-      const videos = (section as any).showcaseVideos || [];
-      const available = Array.from(new Set<string>(videos.map((video: any) => String(video.group || '').trim() || 'Generale')));
-      const saved: string[] = (section as any).showcaseGroupOrder || [];
-      const ordered = [
-        ...saved.filter(name => available.includes(name)),
-        ...available.filter(name => !saved.includes(name))
-      ];
+      const ordered = [...orderedShowcaseGroupNames];
       const index = ordered.indexOf(groupName);
       const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= ordered.length) return section;
+      if (index < 0 || nextIndex < 0 || nextIndex >= ordered.length || !activeTab) return section;
       [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
-      return { ...section, showcaseGroupOrder: ordered };
+      return { ...section, videoGroupOrderByTab: { ...section.videoGroupOrderByTab, [activeTab.id]: ordered } };
     }));
   };
 
   const handleSaveDocument = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!docTitle.trim()) return;
+    if (!docTitle.trim() || activeTab?.kind !== 'materials') return;
     if (!docUrl.trim() || docUrl === '#') {
       showToast('Carica un file o inserisci un collegamento web prima di salvare.');
       return;
@@ -1393,6 +1437,7 @@ export default function FitaTaekwondoApp() {
     const documentTitle = docTitle.trim().toLowerCase().endsWith(extension) ? docTitle.trim() : `${docTitle.trim()}${extension}`;
     const newDoc = {
       id: 'doc-' + Date.now(),
+      tabId: activeTab.id,
       title: documentTitle,
       format: docFormat,
       size: docFileName ? 'Caricato online' : 'Esterno',
@@ -1602,10 +1647,11 @@ export default function FitaTaekwondoApp() {
   };
 
   const openLinkedArticle = (articleId: string) => {
-    const target = sections.find(section => section.subsections.some((article: any) => article.id === articleId));
-    if (!target) return;
+    const target = displayedSections.find(section => section.subsections.some(article => article.id === articleId));
+    const article = target?.subsections.find(item => item.id === articleId);
+    if (!target || !article) return;
     setActiveSectionId(target.id);
-    setActiveTabMode('rules');
+    setSelectedTabId(article.tabId ?? 'rules');
     setOpenAccordions(previous => ({ ...previous, [articleId]: true }));
     window.setTimeout(() => document.getElementById(`article-${articleId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
   };
@@ -1664,6 +1710,7 @@ export default function FitaTaekwondoApp() {
     const newSub = {
       notifiedAt: editingSubsection?.notifiedAt ?? (!editingSubsection && notify ? new Date().toISOString() : undefined),
       id: editingSubsection ? editingSubsection.id : 'sub_' + Date.now(),
+      tabId: editingSubsection ? editingSubsection.tabId : activeTab?.id ?? 'rules',
       addedAt: (editingSubsection as any)?.addedAt ?? new Date().toISOString(),
       hidden: (editingSubsection as any)?.hidden ?? false,
       suggested: formSuggested,
@@ -1707,7 +1754,10 @@ export default function FitaTaekwondoApp() {
     if (bulkImportCandidates.length === 0) { showToast('Seleziona almeno un articolo da importare.'); return; }
 
     const targetSection = sections.find(section => section.id === bulkImportSectionId);
-    if (!targetSection) { showToast('Seleziona una sezione del regolamento valida.'); return; }
+    if (!targetSection || !hasSectionTab(targetSection, 'rules', { tabId: bulkImportTabId })) {
+      showToast('Seleziona una sottosezione di articoli.');
+      return;
+    }
 
     if (!bulkImportReviewItems) {
       const existing = sections.flatMap(section => section.subsections.map((item: any) => ({ ...item, sectionTitle: section.title })));
@@ -1726,6 +1776,7 @@ export default function FitaTaekwondoApp() {
 
     const importedSubsections = bulkImportCandidates.map(({ article }, index) => ({
       id: `sub_bulk_${Date.now()}_${index}`,
+      tabId: bulkImportTabId,
       addedAt: new Date().toISOString(),
       title: article.title,
       content: article.content,
@@ -1738,7 +1789,7 @@ export default function FitaTaekwondoApp() {
       section.id === bulkImportSectionId ? { ...section, subsections: [...section.subsections, ...importedSubsections] } : section
     ));
     setActiveSectionId(bulkImportSectionId);
-    setActiveTabMode('rules');
+    setSelectedTabId(bulkImportTabId);
     setIsQuickImportModalOpen(false);
     setBulkImportText('');
     setExcludedBulkArticleIndices([]);
@@ -1817,7 +1868,8 @@ export default function FitaTaekwondoApp() {
     const sourceSection = sections.find(section => section.id === movingArticle.sourceSectionId);
     const targetSection = sections.find(section => section.id === moveTargetSectionId);
     const article = sourceSection?.subsections.find(sub => sub.id === movingArticle.id);
-    if (!sourceSection || !targetSection || !article) {
+    const targetTab = targetSection && getSectionTabs(targetSection).find(tab => tab.kind === 'rules' && !tab.archived);
+    if (!sourceSection || !targetSection || !article || !targetTab) {
       showToast('Impossibile spostare l’articolo. Aggiorna la pagina e riprova.');
       return;
     }
@@ -1827,13 +1879,13 @@ export default function FitaTaekwondoApp() {
         return { ...section, subsections: section.subsections.filter(sub => sub.id !== movingArticle.id) };
       }
       if (section.id === moveTargetSectionId) {
-        return { ...section, subsections: [...section.subsections, article] };
+        return { ...section, subsections: [...section.subsections, { ...article, tabId: targetTab.id }] };
       }
       return section;
     }));
     setSelectedArticleIds(prev => prev.filter(id => id !== movingArticle.id));
     setActiveSectionId(moveTargetSectionId);
-    setActiveTabMode('rules');
+    setSelectedTabId(targetTab.id);
     setOpenAccordions(prev => ({ ...prev, [movingArticle.id]: true }));
     setMovingArticle(null);
     showToast(`Articolo spostato in “${targetSection.title}”.`);
@@ -1843,10 +1895,12 @@ export default function FitaTaekwondoApp() {
     setSections(prev => prev.map(section => {
       if (section.id !== sectionId) return section;
       const subsections = [...section.subsections];
-      const index = subsections.findIndex(article => article.id === articleId);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= subsections.length) return section;
-      [subsections[index], subsections[nextIndex]] = [subsections[nextIndex], subsections[index]];
+      const indices = subsections.flatMap((article, index) => (article.tabId ?? 'rules') === activeTab?.id ? [index] : []);
+      const position = indices.findIndex(index => subsections[index].id === articleId);
+      const currentIndex = indices[position];
+      const nextIndex = indices[position + direction];
+      if (currentIndex === undefined || nextIndex === undefined) return section;
+      [subsections[currentIndex], subsections[nextIndex]] = [subsections[nextIndex], subsections[currentIndex]];
       return { ...section, subsections };
     }));
     setArticleSort('custom');
@@ -1856,32 +1910,46 @@ export default function FitaTaekwondoApp() {
     setSections(prev => prev.map(section => {
       if (section.id !== sectionId) return section;
       const subsections = [...section.subsections];
-      const index = subsections.findIndex(article => article.id === articleId);
-      if (index < 0 || (edge === 'top' && index === 0) || (edge === 'bottom' && index === subsections.length - 1)) return section;
+      const indices = subsections.flatMap((article, index) => (article.tabId ?? 'rules') === activeTab?.id ? [index] : []);
+      const index = indices.find(candidate => subsections[candidate].id === articleId);
+      const target = edge === 'top' ? indices[0] : indices.at(-1);
+      if (index === undefined || target === undefined || index === target) return section;
       const [article] = subsections.splice(index, 1);
-      if (edge === 'top') subsections.unshift(article);
-      else subsections.push(article);
+      subsections.splice(target, 0, article);
       return { ...section, subsections };
     }));
     setArticleSort('custom');
   };
 
-  const displayedSections = user?.role === 'admin' && adminMode
-    ? sections
-    : sections.map(section => ({
+  const displayedSections = sections.map(section => {
+    const canSeeHidden = isAccountAdmin && adminMode;
+    return {
       ...section,
-      subsections: (section as any).hidden ? [] : section.subsections.filter(sub => !(sub as any).hidden)
-    }));
+      subsections: !canSeeHidden && (section as any).hidden ? [] : section.subsections.filter(article =>
+        hasSectionTab(section, 'rules', article) && (canSeeHidden || !(article as any).hidden)
+      ),
+    };
+  });
 
-  const currentSection = displayedSections.find(s => s.id === activeSectionId);
-  const isCurrentSectionUnavailable = Boolean((currentSection as any)?.hidden) && !(user?.role === 'admin' && adminMode);
-  const currentShowcaseVideos = (currentSection as any)?.showcaseVideos || [];
-  const availableShowcaseGroups = Array.from(new Set<string>(currentShowcaseVideos.map((video: any) => String(video.group || '').trim() || 'Generale')));
-  const savedShowcaseGroupOrder: string[] = (currentSection as any)?.showcaseGroupOrder || [];
+  const currentSection = displayedSections.find(section => section.id === activeSectionId);
+  const managedSection = sections.find(section => section.id === managedSectionId);
+  const visibleTabs = currentSection ? getSectionTabs(currentSection).filter(tab => !tab.archived) : [];
+  const activeTab = visibleTabs.find(tab => tab.id === selectedTabId) ?? visibleTabs[0];
+  const activeTabMode = activeTab?.kind;
+  const isCurrentSectionUnavailable = Boolean((currentSection as any)?.hidden) && !(isAccountAdmin && adminMode);
+  const currentArticles = currentSection?.subsections.filter(article => (article.tabId ?? 'rules') === activeTab?.id) ?? [];
+  const currentDocuments = currentSection?.documents?.filter(document => (document.tabId ?? 'materials') === activeTab?.id) ?? [];
+  const currentShowcaseVideos = currentSection?.showcaseVideos?.filter(video => (video.tabId ?? 'showcase') === activeTab?.id) ?? [];
+  const availableShowcaseGroups = [...new Set(currentShowcaseVideos.map(showcaseGroupName))];
+  const savedShowcaseGroupOrder = currentSection?.videoGroupOrderByTab?.[activeTab?.id ?? '']
+    ?? (activeTab?.id === 'showcase' ? currentSection?.showcaseGroupOrder : undefined) ?? [];
   const orderedShowcaseGroupNames = [
     ...savedShowcaseGroupOrder.filter(groupName => availableShowcaseGroups.includes(groupName)),
     ...availableShowcaseGroups.filter(groupName => !savedShowcaseGroupOrder.includes(groupName))
   ];
+  const availableArticleSections = sections.filter(section => getSectionTabs(section).some(tab => tab.kind === 'rules' && !tab.archived));
+  const importSection = sections.find(section => section.id === bulkImportSectionId);
+  const importTabs = importSection ? getSectionTabs(importSection).filter(tab => tab.kind === 'rules' && !tab.archived) : [];
 
   const articleSearchSuggestions = searchQuery.trim().length >= 2
     ? displayedSections.flatMap(section => section.subsections.map(sub => ({ section, sub })))
@@ -1896,7 +1964,7 @@ export default function FitaTaekwondoApp() {
         .slice(0, 6)
     : [];
 
-  const filteredSubsections = currentSection ? currentSection.subsections.filter(sub => {
+  const filteredSubsections = currentArticles.filter(sub => {
     const query = searchQuery.trim().toLocaleLowerCase('it');
     const matchesSearch =
       sub.title.toLocaleLowerCase('it').includes(query) ||
@@ -1922,7 +1990,7 @@ export default function FitaTaekwondoApp() {
     }
     if (articleSort === 'favorites-first') return Number(favorites.includes(b.id)) - Number(favorites.includes(a.id)) || a.title.localeCompare(b.title, 'it', { sensitivity: 'base' });
     return 0;
-  }) : [];
+  });
 
   // NOTIZIE FILTRATE E ORDINATE (IN EVIDENZA PER PRIME)
   const filteredNews = newsList
@@ -2091,7 +2159,7 @@ export default function FitaTaekwondoApp() {
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
                           setActiveSectionId(section.id);
-                          setActiveTabMode('rules');
+                          setSelectedTabId('rules');
                           setSearchQuery(sub.title);
                           setOpenAccordions(prev => ({ ...prev, [sub.id]: true }));
                           setIsArticleSearchFocused(false);
@@ -2178,7 +2246,7 @@ export default function FitaTaekwondoApp() {
               {displayedSections.map((sec) => (
                 <button
                   key={sec.id}
-                  onClick={() => { setActiveSectionId(sec.id); setActiveTabMode('rules'); }}
+                  onClick={() => { setActiveSectionId(sec.id); setSelectedTabId('rules'); }}
                   className={`py-2.5 px-3 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
                     activeSectionId === sec.id ? 'bg-[#0B1B3D] text-white border-[#0B1B3D] shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                   }`}
@@ -2319,6 +2387,9 @@ export default function FitaTaekwondoApp() {
                       <button type="button" onClick={() => setSectionRename({ sectionId: currentSection.id, name: currentSection.title })} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-[#0B1B3D]">
                         <Edit3 className="h-3.5 w-3.5" /> Rinomina sezione
                       </button>
+                      <button type="button" onClick={() => { setManagedSectionId(currentSection.id); setTabDraft(null); }} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-800 hover:bg-blue-100">
+                        <Settings className="h-3.5 w-3.5" /> Gestisci sottosezioni
+                      </button>
                       <button type="button" onClick={() => toggleSectionVisibility(currentSection.id)} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100">
                         {(currentSection as any).hidden ? 'Riattiva sezione per gli utenti' : 'Nascondi temporaneamente la sezione agli utenti'}
                       </button>
@@ -2326,34 +2397,32 @@ export default function FitaTaekwondoApp() {
                   )}
                 </div>
 
-                <div className={`grid w-full gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 ${['kyorugi', 'poomsae', 'freestyle'].includes(currentSection.id) ? 'grid-cols-3' : 'grid-cols-2'} sm:flex sm:w-auto`}>
-                  <button
-                    onClick={() => setActiveTabMode('rules')}
-                    className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-center text-xs font-bold leading-tight transition-all sm:min-h-0 sm:flex-row sm:gap-1.5 sm:px-3 ${
-                      activeTabMode === 'rules' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600'
-                    }`}
-                  >
-                    <BookOpen className="w-3.5 h-3.5" /> Articoli
-                  </button>
-                  {['kyorugi', 'poomsae', 'freestyle'].includes(currentSection.id) && (
-                    <button
-                      onClick={() => setActiveTabMode('showcase')}
-                      className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-center text-xs font-bold leading-tight transition-all sm:min-h-0 sm:flex-row sm:gap-1.5 sm:px-3 ${
-                        activeTabMode === 'showcase' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600'
-                      }`}
-                    >
-                      <Video className="w-3.5 h-3.5" /> {currentSection.id === 'kyorugi' ? 'Gestualità' : currentSection.id === 'poomsae' ? 'Esecuzioni' : 'Tecniche in evidenza'}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setActiveTabMode('materials')}
-                    className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-center text-xs font-bold leading-tight transition-all sm:min-h-0 sm:flex-row sm:gap-1.5 sm:px-3 ${
-                      activeTabMode === 'materials' ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600'
-                    }`}
-                  >
-                    <Download className="w-3.5 h-3.5" /> <span>Documenti <span className="hidden sm:inline">({currentSection.documents?.length || 0})</span></span>
-                  </button>
-                </div>
+                {visibleTabs.length > 0 && (
+                  <nav aria-label="Sottosezioni" className="flex w-full flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 sm:w-auto">
+                    {visibleTabs.map(tab => {
+                      const Icon = tab.kind === 'rules' ? BookOpen : tab.kind === 'showcase' ? Video : Download;
+                      const count = tab.kind === 'materials'
+                        ? currentSection.documents?.filter(document => (document.tabId ?? 'materials') === tab.id).length ?? 0
+                        : null;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          aria-current={tab.id === activeTab?.id ? 'true' : undefined}
+                          onClick={() => {
+                            setSelectedTabId(tab.id);
+                            setSelectedArticleIds([]);
+                            setIsSelectingArticles(false);
+                          }}
+                          className={`flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-center text-xs font-bold transition-colors sm:min-h-8 sm:flex-none ${tab.id === activeTab?.id ? 'bg-[#0B1B3D] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0" />
+                          <span className="[overflow-wrap:anywhere]">{tab.title}{count !== null && <span className="hidden sm:inline"> ({count})</span>}</span>
+                        </button>
+                      );
+                    })}
+                  </nav>
+                )}
               </div>
 
               {isCurrentSectionUnavailable ? (
@@ -2364,6 +2433,7 @@ export default function FitaTaekwondoApp() {
                 </div>
               ) : (
                 <>
+              {!activeTab && <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Nessuna sottosezione disponibile.</p>}
               {activeTabMode === 'rules' && (
                 <div className="space-y-3">
                   <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:flex-row md:flex-wrap md:items-center md:justify-between">
@@ -2408,6 +2478,7 @@ export default function FitaTaekwondoApp() {
                         <button
                           onClick={() => {
                             setBulkImportSectionId(currentSection.id);
+                            setBulkImportTabId(activeTab.id);
                             setIsQuickImportModalOpen(true);
                           }}
                           className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-slate-300 px-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50 md:min-h-0 md:px-3 md:py-1.5"
@@ -2448,7 +2519,7 @@ export default function FitaTaekwondoApp() {
                       const subtitle = getArticleSubtitle(sub);
                       const isFav = favorites.includes(sub.id);
                       const isHiddenForUsers = (sub as any).hidden === true;
-                      const storedArticleIndex = currentSection.subsections.findIndex(article => article.id === sub.id);
+                      const storedArticleIndex = currentArticles.findIndex(article => article.id === sub.id);
 
                       return (
                         <div id={`article-${sub.id}`} key={sub.id} className={`rounded-xl border shadow-sm overflow-hidden ${isHiddenForUsers ? 'border-slate-300 bg-slate-100' : 'border-slate-200 bg-white'} ${selectedArticleIds.includes(sub.id) ? 'border-red-300 ring-1 ring-red-200' : ''}`}>
@@ -2505,21 +2576,20 @@ export default function FitaTaekwondoApp() {
                               {user && user.role === 'admin' && adminMode && (
                                 <div className="flex flex-wrap items-center gap-1 border-l border-slate-200 pl-1" onClick={(e) => e.stopPropagation()}>
                                   <button type="button" disabled={storedArticleIndex === 0} onClick={() => handleMoveSubsection(currentSection.id, sub.id, -1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in alto" aria-label={`Sposta ${sub.title} in alto`}>↑</button>
-                                  <button type="button" disabled={storedArticleIndex === currentSection.subsections.length - 1} onClick={() => handleMoveSubsection(currentSection.id, sub.id, 1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in basso" aria-label={`Sposta ${sub.title} in basso`}>↓</button>
+                                  <button type="button" disabled={storedArticleIndex === currentArticles.length - 1} onClick={() => handleMoveSubsection(currentSection.id, sub.id, 1)} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta articolo in basso" aria-label={`Sposta ${sub.title} in basso`}>↓</button>
                                   <button type="button" disabled={storedArticleIndex === 0} onClick={() => moveSubsectionToEdge(currentSection.id, sub.id, 'top')} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta all’inizio della sezione" aria-label={`Sposta ${sub.title} all’inizio della sezione`}>⇈</button>
-                                  <button type="button" disabled={storedArticleIndex === currentSection.subsections.length - 1} onClick={() => moveSubsectionToEdge(currentSection.id, sub.id, 'bottom')} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta alla fine della sezione" aria-label={`Sposta ${sub.title} alla fine della sezione`}>⇊</button>
+                                  <button type="button" disabled={storedArticleIndex === currentArticles.length - 1} onClick={() => moveSubsectionToEdge(currentSection.id, sub.id, 'bottom')} className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30" title="Sposta alla fine della sezione" aria-label={`Sposta ${sub.title} alla fine della sezione`}>⇊</button>
                                   <button type="button" onClick={() => toggleArticleVisibility(currentSection.id, sub.id)} className={`rounded p-1.5 ${isHiddenForUsers ? 'text-slate-500 hover:bg-slate-200' : 'text-slate-600 hover:bg-slate-100'}`} title={isHiddenForUsers ? 'Mostra agli utenti' : 'Nascondi agli utenti'} aria-label={isHiddenForUsers ? `Mostra ${sub.title} agli utenti` : `Nascondi ${sub.title} agli utenti`}>
                                     {isHiddenForUsers ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                   </button>
-                                  {sections.length > 1 && (
+                                  {availableArticleSections.some(section => section.id !== currentSection.id) && (
                                     <button type="button" onClick={() => {
                                       setMovingArticle({ id: sub.id, title: sub.title, sourceSectionId: currentSection.id });
-                                      setMoveTargetSectionId(sections.find(section => section.id !== currentSection.id)?.id || '');
+                                      setMoveTargetSectionId(availableArticleSections.find(section => section.id !== currentSection.id)?.id || '');
                                     }} className="rounded p-1.5 text-slate-600 hover:bg-slate-100" title="Sposta in un’altra sezione" aria-label={`Sposta ${sub.title} in un’altra sezione`}>
                                       <ArrowRightLeft className="h-4 w-4" />
                                     </button>
                                   )}
-                                  <button type="button" onClick={() => setSectionRename({ sectionId: currentSection.id, articleId: sub.id, name: sub.title })} className="rounded p-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-50" aria-label={`Rinomina ${sub.title}`}>Rinomina</button>
                                   <button type="button" onClick={() => handleEditClick(sub, currentSection.id)} className="p-1 text-blue-600" aria-label={`Modifica ${sub.title}`}>
                                     <Edit3 className="w-3.5 h-3.5" />
                                   </button>
@@ -2592,11 +2662,11 @@ export default function FitaTaekwondoApp() {
                 </div>
               )}
 
-              {activeTabMode === 'showcase' && ['kyorugi', 'poomsae', 'freestyle'].includes(currentSection.id) && (
+              {activeTabMode === 'showcase' && (
                 <section className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-bold text-[#0B1B3D]">{currentSection.id === 'kyorugi' ? 'Gestualità' : currentSection.id === 'poomsae' ? 'Esecuzioni' : 'Tecniche in evidenza'}</h3>
+                      <h3 className="text-sm font-bold text-[#0B1B3D]">{activeTab.title}</h3>
                       <p className="mt-0.5 text-xs text-slate-500">Video con commenti e dimostrazioni.</p>
                     </div>
                     {user?.role === 'admin' && adminMode && (
@@ -2606,7 +2676,7 @@ export default function FitaTaekwondoApp() {
                     )}
                   </div>
 
-                  {((currentSection as any).showcaseVideos || []).length === 0 ? (
+                  {currentShowcaseVideos.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500">Non ci sono ancora video in questa sezione.</div>
                   ) : (
                     <div className="space-y-6">
@@ -2686,7 +2756,7 @@ export default function FitaTaekwondoApp() {
               {activeTabMode === 'materials' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-[#0B1B3D] uppercase">Documenti Didattici</h3>
+                    <h3 className="text-xs font-bold text-[#0B1B3D] uppercase">{activeTab.title}</h3>
                     {user && user.role === 'admin' && adminMode && (
                       <button onClick={() => setIsDocModalOpen(true)} className="px-3 py-1 rounded-lg bg-[#0B1B3D] text-white font-bold text-xs">
                         + Carica File
@@ -2694,13 +2764,13 @@ export default function FitaTaekwondoApp() {
                     )}
                   </div>
 
-                  {(!currentSection.documents || currentSection.documents.length === 0) ? (
+                  {currentDocuments.length === 0 ? (
                     <div className="bg-white p-8 text-center rounded-xl border border-slate-200 text-xs text-slate-500">
                       Nessun documento caricato.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {currentSection.documents.map((doc) => (
+                      {currentDocuments.map((doc) => (
                         <div key={doc.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-start gap-3">
                           <div className="flex min-w-0 flex-1 basis-full items-start gap-2.5 sm:basis-auto">
                             <div className="p-2.5 rounded-lg bg-red-700 text-white font-black text-xs shrink-0">
@@ -2790,10 +2860,21 @@ export default function FitaTaekwondoApp() {
                   <select
                     id="bulk-import-section"
                     value={bulkImportSectionId}
-                    onChange={(e) => setBulkImportSectionId(e.target.value)}
+                    onChange={event => {
+                      const section = sections.find(item => item.id === event.target.value);
+                      if (!section) return;
+                      setBulkImportSectionId(section.id);
+                      setBulkImportTabId(getSectionTabs(section).find(tab => tab.kind === 'rules' && !tab.archived)?.id ?? '');
+                    }}
                     className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-lg text-slate-800"
                   >
                     {sections.map(section => <option key={section.id} value={section.id}>{section.title}</option>)}
+                  </select>
+
+                  <label htmlFor="bulk-import-tab" className="block font-bold text-slate-600">Sottosezione di destinazione</label>
+                  <select id="bulk-import-tab" value={bulkImportTabId} onChange={event => setBulkImportTabId(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800">
+                    {!importTabs.length && <option value="">Nessuna sottosezione di articoli</option>}
+                    {importTabs.map(tab => <option key={tab.id} value={tab.id}>{tab.title}</option>)}
                   </select>
 
                   <label htmlFor="bulk-import-text" className="block font-bold text-slate-600">Risposta dell’AI</label>
@@ -2914,7 +2995,7 @@ export default function FitaTaekwondoApp() {
                 <div>
                   <label htmlFor="article-move-target" className="mb-1 block text-xs font-bold text-slate-600">Sezione di destinazione</label>
                   <select id="article-move-target" required value={moveTargetSectionId} onChange={e => setMoveTargetSectionId(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-800">
-                    {sections.filter(section => section.id !== movingArticle.sourceSectionId).map(section => (
+                    {availableArticleSections.filter(section => section.id !== movingArticle.sourceSectionId).map(section => (
                       <option key={section.id} value={section.id}>{section.title}</option>
                     ))}
                   </select>
@@ -3141,7 +3222,7 @@ export default function FitaTaekwondoApp() {
               type="button"
               aria-label={sec.title}
               title={sec.title}
-              onClick={() => { setActiveSectionId(sec.id); setActiveTabMode('rules'); }}
+              onClick={() => { setActiveSectionId(sec.id); setSelectedTabId('rules'); }}
               className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg min-h-12 py-1 transition-colors ${
                 activeSectionId === sec.id ? 'text-amber-400 font-bold' : 'text-slate-300'
               }`}
@@ -3349,25 +3430,30 @@ export default function FitaTaekwondoApp() {
               <label className="block text-xs font-bold text-slate-600">Titolo video
                 <input autoFocus required value={showcaseTitle} onChange={event => setShowcaseTitle(event.target.value)} placeholder="Es. Calcio girato in salto" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
               </label>
-              <fieldset className="space-y-2" disabled={isUploadingShowcaseVideo}>
-                <legend className="text-xs font-bold text-slate-600">Origine del video</legend>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" aria-pressed={showcaseSource === 'url'} onClick={() => setShowcaseSource('url')} className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-bold aria-pressed:bg-blue-100 aria-pressed:text-blue-950">Inserisci link</button>
-                  <button type="button" aria-pressed={showcaseSource === 'file'} onClick={() => setShowcaseSource('file')} className="min-h-10 rounded-md border border-slate-300 px-3 text-xs font-bold aria-pressed:bg-blue-100 aria-pressed:text-blue-950">Carica file</button>
+              <fieldset className="space-y-3" disabled={isUploadingShowcaseVideo}>
+                <legend className="mb-1 text-xs font-bold text-slate-600">Origine del video</legend>
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1.5">
+                  <button type="button" aria-pressed={showcaseSource === 'url'} onClick={() => setShowcaseSource('url')} className={`flex min-h-12 items-center gap-2 rounded-lg border px-2.5 text-left text-xs font-bold transition-colors sm:px-3 ${showcaseSource === 'url' ? 'border-[#0B1B3D] bg-[#0B1B3D] text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                    <LinkIcon className="h-4 w-4 shrink-0" /> Link <CheckCircle aria-hidden="true" className={`ml-auto h-4 w-4 shrink-0 ${showcaseSource === 'url' ? '' : 'invisible'}`} />
+                  </button>
+                  <button type="button" aria-pressed={showcaseSource === 'file'} onClick={() => setShowcaseSource('file')} className={`flex min-h-12 items-center gap-2 rounded-lg border px-2.5 text-left text-xs font-bold transition-colors sm:px-3 ${showcaseSource === 'file' ? 'border-violet-700 bg-violet-700 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                    <Images className="h-4 w-4 shrink-0" /> Galleria <CheckCircle aria-hidden="true" className={`ml-auto h-4 w-4 shrink-0 ${showcaseSource === 'file' ? '' : 'invisible'}`} />
+                  </button>
                 </div>
                 {showcaseSource === 'url' ? (
-                  <label className="block text-xs font-bold text-slate-600">Link video
-                    <input required type="url" value={showcaseUrl.startsWith('/') ? '' : showcaseUrl} onChange={event => setShowcaseUrl(event.target.value)} placeholder="YouTube, Vimeo, Instagram, TikTok o MP4" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal text-slate-800" />
+                  <label className="block rounded-xl border border-slate-200 p-3 text-xs font-bold text-slate-700">Link del video
+                    <input required type="url" value={showcaseUrl.startsWith('/') ? '' : showcaseUrl} onChange={event => setShowcaseUrl(event.target.value)} placeholder="YouTube, Vimeo, Instagram, TikTok o MP4" className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal text-slate-800" />
                   </label>
                 ) : (
-                  <>
-                    <label className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-slate-300 px-3 text-xs font-bold text-slate-700 focus-within:ring-2 focus-within:ring-blue-500">
-                      Scegli dalla galleria o dai file
+                  <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50 p-3">
+                    <label className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 text-center text-sm font-bold text-white transition-colors hover:bg-violet-800 focus-within:ring-2 focus-within:ring-violet-500 focus-within:ring-offset-2">
+                      <Upload aria-hidden="true" className="h-4 w-4 shrink-0" />
+                      {showcaseUrl.startsWith('/api/articles/media?') ? 'Sostituisci video' : 'Scegli dalla galleria o dai file'}
                       <input type="file" accept="video/*,.mp4,.mov,.m4v,.webm" onChange={handleShowcaseFile} className="sr-only" />
                     </label>
-                    {showcaseUrl.startsWith('/api/articles/media?') && <p className="break-words text-xs font-semibold text-slate-700">{showcaseFileName || 'Video caricato'}</p>}
-                    <p className="text-xs text-slate-500">Fino a 100 MB. Sul telefono, consenti l’accesso alla galleria se richiesto dal dispositivo.</p>
-                  </>
+                    {showcaseUrl.startsWith('/api/articles/media?') && <p className="flex items-center gap-1.5 break-all text-xs font-semibold text-violet-800"><CheckCircle className="h-4 w-4 shrink-0" /> {showcaseFileName || 'Video caricato'}</p>}
+                    <p className="text-xs text-slate-600">Fino a 100 MB. Consenti l’accesso alla galleria se richiesto dal telefono.</p>
+                  </div>
                 )}
               </fieldset>
               {isUploadingShowcaseVideo && <p role="status" className="text-xs font-semibold text-blue-700">Caricamento video…</p>}
@@ -3384,13 +3470,72 @@ export default function FitaTaekwondoApp() {
         </div>
       )}
 
+      {managedSection && isAccountAdmin && adminMode && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-900/70 p-3" onKeyDown={event => {
+          if (event.key === 'Escape') setManagedSectionId(null);
+        }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="section-tabs-title" className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl sm:p-6">
+            <header className="mb-4 flex items-center justify-between gap-2">
+              <div>
+                <h2 id="section-tabs-title" className="text-lg font-bold text-[#0B1B3D]">Gestisci sottosezioni</h2>
+                <p className="text-xs text-slate-500">{managedSection.title}</p>
+              </div>
+              <button type="button" autoFocus onClick={() => setManagedSectionId(null)} aria-label="Chiudi" className="grid min-h-11 min-w-11 place-items-center rounded-lg text-slate-600 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+            </header>
+            <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+              {getSectionTabs(managedSection).map(tab => (
+                <li key={tab.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                  <div className="min-w-0 break-words">
+                    <p className="text-sm font-bold text-slate-800">{tab.title}</p>
+                    <p className="text-xs text-slate-500">{SECTION_TAB_TYPES[tab.kind]}{tab.archived ? ' · Rimossa' : ''}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {tab.archived ? (
+                      <button type="button" onClick={() => setTabArchived(tab, false)} className="min-h-10 rounded-md px-2 text-xs font-bold text-blue-700 hover:bg-blue-50">Ripristina</button>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => setTabDraft(tab)} aria-label={`Rinomina ${tab.title}`} className="min-h-10 rounded-md px-2 text-xs font-bold text-blue-700 hover:bg-blue-50">Rinomina</button>
+                        <button type="button" onClick={() => setTabArchived(tab, true)} aria-label={`Rimuovi ${tab.title}`} className="min-h-10 rounded-md px-2 text-xs font-bold text-red-700 hover:bg-red-50">Rimuovi</button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-slate-500">Puoi ripristinare una sottosezione rimossa insieme ai suoi contenuti.</p>
+            {tabDraft ? (
+              <form onSubmit={saveTab} className="mt-4 space-y-3 rounded-lg border border-slate-200 p-3">
+                <label className="block text-xs font-bold text-slate-700">{tabDraft.id ? 'Nuovo titolo' : 'Titolo della sottosezione'}
+                  <input key={tabDraft.id ?? 'new'} autoFocus required maxLength={80} value={tabDraft.title} onChange={event => setTabDraft({ ...tabDraft, title: event.target.value })} className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 p-2.5 text-sm text-slate-800" />
+                </label>
+                {!tabDraft.id && (
+                  <label className="block text-xs font-bold text-slate-700">Tipo di contenuto
+                    <select value={tabDraft.kind} onChange={event => setTabDraft({ ...tabDraft, kind: event.target.value as SectionTabKind })} className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 p-2.5 text-sm text-slate-800">
+                      {Object.entries(SECTION_TAB_TYPES).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
+                    </select>
+                  </label>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setTabDraft(null)} className="min-h-10 rounded-md px-3 text-xs font-bold text-slate-700 hover:bg-slate-100">Annulla</button>
+                  <button type="submit" className="min-h-10 rounded-md bg-[#0B1B3D] px-3 text-xs font-bold text-white">{tabDraft.id ? 'Salva titolo' : 'Aggiungi sottosezione'}</button>
+                </div>
+              </form>
+            ) : (
+              <button type="button" onClick={() => setTabDraft({ title: '', kind: 'rules' })} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#0B1B3D] px-3 text-xs font-bold text-white">
+                <Plus className="h-4 w-4" /> Aggiungi sottosezione
+              </button>
+            )}
+          </section>
+        </div>
+      )}
+
       {sectionRename && isAccountAdmin && adminMode && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-3" onKeyDown={event => { if (event.key === 'Escape') setSectionRename(null); }}>
           <section role="dialog" aria-modal="true" aria-labelledby="section-rename-title" className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl sm:p-6">
-            <h2 id="section-rename-title" className="mb-3 text-lg font-bold text-[#0B1B3D]">{sectionRename.articleId ? 'Rinomina sottosezione' : sectionRename.group === undefined ? 'Rinomina sezione' : 'Rinomina gruppo video'}</h2>
+            <h2 id="section-rename-title" className="mb-3 text-lg font-bold text-[#0B1B3D]">{sectionRename.group === undefined ? 'Rinomina sezione' : 'Rinomina gruppo video'}</h2>
             <form onSubmit={saveSectionName} className="space-y-3">
               <label className="block text-sm font-semibold text-slate-700">Nome
-                <input autoFocus required maxLength={sectionRename.articleId ? undefined : 80} value={sectionRename.name} onChange={event => {
+                <input autoFocus required maxLength={80} value={sectionRename.name} onChange={event => {
                   const name = event.target.value;
                   setSectionRename(current => current ? { ...current, name } : null);
                 }} className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-slate-800" />

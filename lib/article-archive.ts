@@ -1,11 +1,16 @@
 import { get, head } from '@vercel/blob';
 
+import type { SectionTab } from './section-tabs';
+
 export const ARTICLES_PATH = 'fita-regolamento/articles.json';
 
 export type ArticleSection = {
   id: string;
   hidden?: boolean;
-  subsections: Array<{ id: string; title: string; content: string; hidden?: boolean }>;
+  sectionTabs?: SectionTab[];
+  subsections: Array<{ id: string; title: string; content: string; hidden?: boolean; tabId?: string }>;
+  documents?: Array<{ tabId?: string }>;
+  showcaseVideos?: Array<{ tabId?: string }>;
   [key: string]: unknown;
 };
 
